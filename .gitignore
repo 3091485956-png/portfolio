@@ -1,0 +1,6 @@
+# 开发源码目录（已编译为 *-embed 产物，无需上传）
+glass/
+lanyard/
+node_modules/
+.DS_Store
+Thumbs.db
