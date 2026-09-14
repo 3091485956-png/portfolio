@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>城堡内 · 交互点位规划器</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+        font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+        background: #14141f; color: #dcdce8; font-size: 13px;
+    }
+    /* ---------- 顶栏 ---------- */
+    #toolbar {
+        position: fixed; top: 0; left: 0; right: 0; height: 52px;
+        background: #1c1c2b; border-bottom: 1px solid #2e2e45;
+        display: flex; align-items: center; gap: 8px; padding: 0 12px; z-index: 100;
+        overflow-x: auto;
+    }
+    .grp {
+        display: flex; align-items: center; gap: 5px;
+        background: rgba(255,255,255,.04); padding: 4px 8px; border-radius: 5px;
+        white-space: nowrap;
+    }
+    .grp > span.lbl { font-size: 11px; color: #7a7a95; }
+    button {
+        background: #3a3a52; color: #dcdce8; border: 1px solid #4a4a68;
+        padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+        font-family: inherit;
+    }
+    button:hover { background: #4a4a66; }
+    button.active { background: #ed64a6; border-color: #ed64a6; color: #fff; }
+    button.warn:hover { background: #c53030; border-color: #c53030; }
+    button.small { padding: 3px 7px; font-size: 11px; }
+    input[type=number], input[type=text], select {
+        background: #25253a; border: 1px solid #3d3d5c; color: #dcdce8;
+        border-radius: 3px; padding: 3px 5px; font-size: 12px; font-family: inherit;
+    }
+    input[type=number] { width: 62px; }
+    input[type=range] { width: 110px; accent-color: #ed64a6; }
+    .fname { font-size: 11px; color: #8b8ba8; max-width: 110px; overflow: hidden;
+             text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ---------- 主体 ---------- */
+    #main { position: fixed; top: 52px; left: 0; right: 0; bottom: 0; display: flex; }
+    #side {
+        width: 250px; background: #1a1a28; border-right: 1px solid #2e2e45;
+        overflow-y: auto; padding: 10px; flex-shrink: 0;
+    }
+    #side h3 {
+        font-size: 12px; color: #ed64a6; margin: 12px 0 6px;
+        border-bottom: 1px solid #2e2e45; padding-bottom: 4px;
+    }
+    #side h3:first-child { margin-top: 0; }
+    .row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .row label { font-size: 11px; color: #8b8ba8; min-width: 52px; }
+    .row .val { font-size: 11px; color: #9ae6b4; font-family: Consolas, monospace; }
+    .hint { font-size: 11px; color: #6b6b85; line-height: 1.5; margin: 4px 0 8px; }
+    .chk { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #9a9ab8; margin-bottom: 4px; }
+    .chk input { accent-color: #ed64a6; }
+
+    #canvas-wrap { flex: 1; position: relative; overflow: hidden; background: #0d0d16; }
+    #cv { display: block; cursor: crosshair; }
+    #coord {
+        position: absolute; left: 8px; bottom: 8px; background: rgba(0,0,0,.75);
+        padding: 4px 9px; border-radius: 4px; font-family: Consolas, monospace;
+        font-size: 11px; color: #9ae6b4; pointer-events: none;
+    }
+    #tip {
+        position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.75);
+        padding: 5px 10px; border-radius: 4px; font-size: 11px; color: #f6ad55;
+        pointer-events: none;
+    }
+
+    /* ---------- 底部 ---------- */
+    #bottom {
+        position: fixed; bottom: 0; right: 0; left: 250px; height: 268px;
+        background: #1a1a28; border-top: 1px solid #2e2e45;
+        display: flex; flex-direction: column; z-index: 90;
+    }
+    #bottom.collapsed { height: 34px; }
+    #btabs {
+        display: flex; align-items: center; gap: 4px; padding: 4px 10px;
+        background: #20203a; border-bottom: 1px solid #2e2e45; flex-shrink: 0;
+    }
+    #btabs .sp { flex: 1; }
+    #bbody { flex: 1; overflow-y: auto; padding: 8px 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; color: #7a7a95; font-weight: normal; font-size: 11px;
+         padding: 3px 5px; border-bottom: 1px solid #2e2e45; position: sticky; top: -8px;
+         background: #1a1a28; }
+    td { padding: 3px 5px; border-bottom: 1px solid #242438; vertical-align: middle; }
+    td.co { font-family: Consolas, monospace; font-size: 11px; color: #9ae6b4; white-space: nowrap; }
+    td input[type=text] { width: 100%; min-width: 160px; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+    .empty { color: #5a5a75; font-size: 12px; padding: 12px; text-align: center; }
+
+    /* canvas 覆盖：底部展开时压缩画布 */
+    #canvas-wrap { position: absolute; top: 0; left: 250px; right: 0; bottom: 268px; }
+
+    #toast {
+        position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+        background: #2f855a; color: #fff; padding: 7px 18px; border-radius: 5px;
+        font-size: 12px; z-index: 999; opacity: 0; transition: opacity .25s;
+        pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
+    ::-webkit-scrollbar-thumb { background: #3a3a55; border-radius: 5px; }
+    ::-webkit-scrollbar-track { background: #1a1a28; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+    <div class="grp">
+        <span class="lbl">地图</span>
+        <button id="btn-map">选择图片</button>
+        <span class="fname" id="map-name">未加载</span>
+    </div>
+    <div class="grp">
+        <span class="lbl">角色</span>
+        <button id="btn-char">选择图片</button>
+        <span class="fname" id="char-name">未加载</span>
+    </div>
+    <div class="grp">
+        <span class="lbl">工具</span>
+        <button class="tool active" data-tool="pan">✋ 平移</button>
+        <button class="tool" data-tool="point">📍 打点</button>
+        <button class="tool" data-tool="brush">🖌 画笔</button>
+        <button class="tool" data-tool="rect">▭ 矩形墙</button>
+    </div>
+    <div class="grp">
+        <span class="lbl">视图</span>
+        <button id="btn-fit">适应窗口</button>
+        <button id="btn-100">1:1</button>
+        <button id="btn-zin">＋</button>
+        <button id="btn-zout">－</button>
+        <span class="fname" id="zoom-txt">100%</span>
+    </div>
+    <div class="grp">
+        <button id="btn-undo">↶ 撤销</button>
+        <button id="btn-clear" class="warn">清空标记</button>
+    </div>
+    <div class="grp">
+        <span class="lbl">坐标系</span>
+        <select id="coord-sys">
+            <option value="world">显示世界坐标</option>
+            <option value="image">显示图片像素</option>
+        </select>
+    </div>
+</div>
+
+<div id="main">
+    <div id="side">
+        <h3>👤 角色参考</h3>
+        <div class="row">
+            <label>缩放</label>
+            <input type="range" id="cs" min="0.01" max="0.40" step="0.001" value="0.088">
+            <input type="number" id="cs-n" min="0.001" max="2" step="0.001" value="0.088">
+        </div>
+        <div class="hint">
+            人形显示：<span class="val" id="ch-info">—</span><br>
+            脚底偏移：<span class="val" id="cf-info">—</span><br>
+            碰撞箱：<span class="val" id="cb-info">—</span><br>
+            <span style="color:#f6ad55">拖动角色可挪位置，用来比门/窗的高度</span>
+        </div>
+        <div class="row">
+            <button id="btn-char-here" class="small">角色移到鼠标处</button>
+            <button id="btn-char-center" class="small">居中</button>
+        </div>
+
+        <h3>🗺 地图</h3>
+        <div class="row">
+            <label>世界缩放</label>
+            <input type="range" id="ms" min="0.1" max="4" step="0.01" value="1">
+            <input type="number" id="ms-n" min="0.01" max="20" step="0.01" value="1">
+        </div>
+        <div class="row">
+            <label>偏移 X</label><input type="number" id="ox" value="0" step="10">
+            <label style="min-width:14px">Y</label><input type="number" id="oy" value="0" step="10">
+        </div>
+        <div class="hint">
+            原图 <span class="val" id="map-size">—</span><br>
+            世界尺寸 <span class="val" id="map-world">—</span><br>
+            地图高 ≈ <span class="val" id="map-in-char">—</span> 个角色高
+        </div>
+
+        <h3>👁 显示</h3>
+        <label class="chk"><input type="checkbox" id="g-grid"> 网格（每 100 世界像素）</label>
+        <label class="chk"><input type="checkbox" id="g-point" checked> 交互点</label>
+        <label class="chk"><input type="checkbox" id="g-wall" checked> 空气墙</label>
+        <label class="chk"><input type="checkbox" id="g-char" checked> 角色参考</label>
+        <label class="chk"><input type="checkbox" id="g-view"> 视口框 1280×720</label>
+        <div class="hint">视口框可以拖动，用来看"这一屏玩家能看到什么"。</div>
+
+        <h3>ℹ 使用说明</h3>
+        <div class="hint">
+            1. 选<b>打点</b>工具，在地图上点一下 → 生成点位<br>
+            2. 底部列表里给这个点填<b>交互需求</b><br>
+            3. 选<b>画笔/矩形墙</b>标空气墙位置<br>
+            4. 点<b>一键复制</b>，把整段提示词粘给 AI<br>
+            滚轮缩放，按住空格或中键拖动画布。
+        </div>
+    </div>
+
+    <div id="canvas-wrap">
+        <canvas id="cv"></canvas>
+        <div id="tip">未加载地图</div>
+        <div id="coord">—</div>
+    </div>
+</div>
+
+<div id="bottom">
+    <div id="btabs">
+        <button class="btab active" data-tab="pts">📍 交互点 <span id="cnt-pts">0</span></button>
+        <button class="btab" data-tab="wls">🧱 空气墙 <span id="cnt-wls">0</span></button>
+        <span class="sp"></span>
+        <button id="btn-copy" style="background:#2f855a;border-color:#2f855a">📋 一键复制全部提示词</button>
+        <button id="btn-export">导出 JSON</button>
+        <button id="btn-import">导入 JSON</button>
+        <button id="btn-toggle">▼</button>
+    </div>
+    <div id="bbody"></div>
+</div>
+
+<input type="file" id="file-map" accept="image/*" style="display:none">
+<input type="file" id="file-char" accept="image/*" style="display:none">
+<input type="file" id="file-json" accept=".json" style="display:none">
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* =======================================================================
+   城堡内 · 交互点位规划器
+   坐标体系：
+     图片坐标 img  —— 原图像素（0..W, 0..H）
+     世界坐标 world = img * mapScale + mapOffset
+     屏幕坐标 scr   = world * view.zoom + view.pan
+   ======================================================================= */
+
+const $  = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+const DEFAULT_MAP  = "./assets/scene_born.jpg";
+const DEFAULT_CHAR = "./assets/hero_south.png";
+
+const TYPE_COLOR = {
+    "门":     "#f6ad55",
+    "窗":     "#63b3ed",
+    "对话":   "#b794f4",
+    "物品":   "#68d391",
+    "传送":   "#fc8181",
+    "出生点": "#f6e05e",
+    "其他":   "#cbd5e0"
+};
+const TYPE_KEYS = Object.keys(TYPE_COLOR);
+
+const S = {
+    map: null, mapName: "", mapW: 0, mapH: 0,
+    char: null, charName: "", charW: 0, charH: 0,
+    charBox: null,                      // 人形在图中的包围盒 {x,y,w,h}
+    charScale: 0.088,
+    charPos: { x: 200, y: 500 },        // 图片坐标，锚点=贴图中心
+    mapScale: 1,
+    mapOffset: { x: 0, y: 0 },
+    view: { zoom: 1, panX: 0, panY: 0 },
+    points: [],
+    walls: [],
+    tool: "pan",
+    sel: null,                          // {kind:'point'|'wall', id}
+    show: { grid: false, point: true, wall: true, char: true, view: false },
+    coordSys: "world",
+    viewBox: { x: 640, y: 360 },        // 视口框中心（世界坐标）
+    draw: null,                         // 正在画的墙
+    panning: false, panStart: null,
+    dragging: null,                     // 正在拖动的角色/视口框/点
+    spaceDown: false,
+    mouse: { x: 0, y: 0, img: {x:0,y:0} },
+    history: []
+};
+
+const cv = $("#cv"), ctx = cv.getContext("2d");
+let DPR = window.devicePixelRatio || 1;
+
+/* ---------------- 坐标换算 ---------------- */
+function img2world(p){ return { x: p.x * S.mapScale + S.mapOffset.x, y: p.y * S.mapScale + S.mapOffset.y }; }
+function world2img(p){ return { x: (p.x - S.mapOffset.x) / S.mapScale, y: (p.y - S.mapOffset.y) / S.mapScale }; }
+function scr2world(s){ return { x: (s.x - S.view.panX) / S.view.zoom, y: (s.y - S.view.panY) / S.view.zoom }; }
+function world2scr(w){ return { x: w.x * S.view.zoom + S.view.panX, y: w.y * S.view.zoom + S.view.panY }; }
+function evScr(e){
+    const r = cv.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function evImg(e){
+    const s = evScr(e);
+    return world2img(scr2world(s));
+}
+const fmt = (n) => (Math.round(n * 10) / 10).toString();
+
+/* ---------------- 历史（快照式撤销） ---------------- */
+function snapshot(){
+    S.history.push(JSON.stringify({
+        points: S.points, walls: S.walls,
+        charPos: S.charPos, charScale: S.charScale,
+        mapScale: S.mapScale, mapOffset: S.mapOffset
+    }));
+    if (S.history.length > 80) S.history.shift();
+}
+function undo(){
+    const snap = S.history.pop();
+    if (!snap) { toast("没有可撤销的操作"); return; }
+    const d = JSON.parse(snap);
+    S.points = d.points; S.walls = d.walls; S.charPos = d.charPos;
+    S.charScale = d.charScale; S.mapScale = d.mapScale; S.mapOffset = d.mapOffset;
+    S.sel = null;
+    syncUI(); render(); save();
+    toast("已撤销");
+}
+
+/* ---------------- 画布尺寸 ---------------- */
+function resize(){
+    const wrap = $("#canvas-wrap");
+    const r = wrap.getBoundingClientRect();
+    DPR = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.floor(r.width * DPR));
+    cv.height = Math.max(1, Math.floor(r.height * DPR));
+    cv.style.width = r.width + "px";
+    cv.style.height = r.height + "px";
+    draw();
+}
+window.addEventListener("resize", resize);
+
+/* ---------------- 绘制 ---------------- */
+function draw(){
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = "#0d0d16";
+    ctx.fillRect(0, 0, cv.width / DPR, cv.height / DPR);
+    if (!S.map) return;
+
+    ctx.save();
+    ctx.translate(S.view.panX, S.view.panY);
+    ctx.scale(S.view.zoom, S.view.zoom);
+
+    const MW = S.mapW * S.mapScale, MH = S.mapH * S.mapScale;
+
+    // 地图
+    ctx.drawImage(S.map, S.mapOffset.x, S.mapOffset.y, MW, MH);
+
+    // 网格（世界坐标，每 100）
+    if (S.show.grid){
+        ctx.strokeStyle = "rgba(120,140,255,.18)"; ctx.lineWidth = 1 / S.view.zoom;
+        ctx.beginPath();
+        const x0 = Math.floor(S.mapOffset.x / 100) * 100, x1 = S.mapOffset.x + MW;
+        const y0 = Math.floor(S.mapOffset.y / 100) * 100, y1 = S.mapOffset.y + MH;
+        for (let x = x0; x <= x1; x += 100){ ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
+        for (let y = y0; y <= y1; y += 100){ ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
+        ctx.stroke();
+    }
+
+    // 空气墙
+    if (S.show.wall){
+        S.walls.forEach(w => drawWall(w, w.id === (S.sel && S.sel.kind === "wall" ? S.sel.id : -1)));
+        if (S.draw) drawWall(S.draw, false);
+    }
+
+    // 交互点
+    if (S.show.point){
+        S.points.forEach((p, i) => drawPoint(p, i, p.id === (S.sel && S.sel.kind === "point" ? S.sel.id : -1)));
+    }
+
+    // 角色参考
+    if (S.show.char && S.char) drawChar();
+
+    // 视口框
+    if (S.show.view) drawViewBox();
+
+    ctx.restore();
+}
+
+function drawPoint(p, i, selected){
+    const w = img2world(p);
+    const r = 9 / S.view.zoom;
+    const col = TYPE_COLOR[p.type] || TYPE_COLOR["其他"];
+    ctx.beginPath(); ctx.arc(w.x, w.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.lineWidth = 2 / S.view.zoom;
+    ctx.strokeStyle = selected ? "#fff" : "rgba(0,0,0,.7)"; ctx.stroke();
+
+    // 编号
+    const fs = 11 / S.view.zoom;
+    ctx.font = "bold " + fs + "px Consolas, monospace";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "#14141f";
+    ctx.fillText(String(p.id), w.x, w.y);
+
+    // 标签（编号 + 类型 + 名称）
+    const label = p.id + (p.type !== "其他" ? " " + p.type : "") + (p.name ? " " + p.name : "");
+    ctx.font = (11 / S.view.zoom) + "px 'Microsoft YaHei', sans-serif";
+    const tw = ctx.measureText(label).width;
+    const pad = 4 / S.view.zoom, bh = 15 / S.view.zoom;
+    const bx = w.x + r + 3 / S.view.zoom, by = w.y - bh / 2;
+    ctx.fillStyle = "rgba(0,0,0,.72)";
+    ctx.fillRect(bx, by, tw + pad * 2, bh);
+    ctx.fillStyle = col; ctx.textAlign = "left";
+    ctx.fillText(label, bx + pad, w.y);
+}
+
+function drawWall(w, selected){
+    ctx.strokeStyle = selected ? "#ffe08a" : "rgba(229,62,62,.95)";
+    ctx.fillStyle = "rgba(229,62,62,.18)";
+    ctx.lineWidth = 3 / S.view.zoom;
+    ctx.setLineDash(selected ? [] : [8 / S.view.zoom, 5 / S.view.zoom]);
+
+    if (w.kind === "rect"){
+        const a = img2world({ x: Math.min(w.x1, w.x2), y: Math.min(w.y1, w.y2) });
+        const b = img2world({ x: Math.max(w.x1, w.x2), y: Math.max(w.y1, w.y2) });
+        ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+        ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+        drawWallLabel(w, a.x + 4 / S.view.zoom, a.y - 4 / S.view.zoom);
+    } else {
+        if (w.pts.length < 2){
+            if (w.pts.length === 1){
+                const a = img2world(w.pts[0]);
+                ctx.beginPath(); ctx.arc(a.x, a.y, 3 / S.view.zoom, 0, 7); ctx.fill();
+            }
+        } else {
+            ctx.beginPath();
+            w.pts.forEach((pt, i) => {
+                const p = img2world(pt);
+                i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+            });
+            ctx.stroke();
+            drawWallLabel(w, img2world(w.pts[0]).x, img2world(w.pts[0]).y - 6 / S.view.zoom);
+        }
+    }
+    ctx.setLineDash([]);
+}
+function drawWallLabel(w, x, y){
+    const t = "W" + w.id + (w.note ? " " + w.note : "");
+    ctx.font = (11 / S.view.zoom) + "px 'Microsoft YaHei', sans-serif";
+    const tw = ctx.measureText(t).width, pad = 4 / S.view.zoom, bh = 15 / S.view.zoom;
+    ctx.fillStyle = "rgba(0,0,0,.72)";
+    ctx.fillRect(x, y - bh, tw + pad * 2, bh);
+    ctx.fillStyle = "#feb2b2"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(t, x + pad, y - bh / 2);
+    ctx.textBaseline = "alphabetic";
+}
+
+function drawChar(){
+    const cp = img2world(S.charPos);            // 贴图中心
+    const s = S.charScale;
+    const dw = S.charW * s, dh = S.charH * s;
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(S.char, cp.x - dw / 2, cp.y - dh / 2, dw, dh);
+    ctx.restore();
+
+    // 人形框
+    if (S.charBox){
+        const b = S.charBox;
+        const bx = cp.x - dw / 2 + b.x * s, by = cp.y - dh / 2 + b.y * s;
+        const bw = b.w * s, bh2 = b.h * s;
+        ctx.strokeStyle = "#63b3ed"; ctx.lineWidth = 1.5 / S.view.zoom;
+        ctx.setLineDash([5 / S.view.zoom, 3 / S.view.zoom]);
+        ctx.strokeRect(bx, by, bw, bh2);
+        ctx.setLineDash([]);
+        // 脚底线
+        ctx.strokeStyle = "#fc8181"; ctx.lineWidth = 2 / S.view.zoom;
+        ctx.beginPath(); ctx.moveTo(bx - 8 / S.view.zoom, by + bh2);
+        ctx.lineTo(bx + bw + 8 / S.view.zoom, by + bh2); ctx.stroke();
+        // 碰撞箱（36x60 基准，随角色缩放同比）
+        const k = S.charScale / 0.088;
+        const cw = 36 * k, chh = 60 * k;
+        ctx.strokeStyle = "#f6e05e"; ctx.lineWidth = 1.5 / S.view.zoom;
+        ctx.strokeRect(cp.x - cw / 2, cp.y - 6 * k, cw, chh);
+    }
+    // 锚点十字
+    ctx.strokeStyle = "#68d391"; ctx.lineWidth = 1 / S.view.zoom;
+    ctx.beginPath();
+    ctx.moveTo(cp.x - 6 / S.view.zoom, cp.y); ctx.lineTo(cp.x + 6 / S.view.zoom, cp.y);
+    ctx.moveTo(cp.x, cp.y - 6 / S.view.zoom); ctx.lineTo(cp.x, cp.y + 6 / S.view.zoom);
+    ctx.stroke();
+}
+
+function drawViewBox(){
+    const x = S.viewBox.x - 640, y = S.viewBox.y - 360;
+    ctx.strokeStyle = "#f6ad55"; ctx.lineWidth = 2 / S.view.zoom;
+    ctx.setLineDash([10 / S.view.zoom, 6 / S.view.zoom]);
+    ctx.strokeRect(x, y, 1280, 720);
+    ctx.setLineDash([]);
+    ctx.font = (12 / S.view.zoom) + "px Consolas, monospace";
+    ctx.fillStyle = "#f6ad55"; ctx.textAlign = "left";
+    ctx.fillText("视口 1280×720", x + 6 / S.view.zoom, y + 18 / S.view.zoom);
+}
+
+/* ---------------- 加载图片 ---------------- */
+function loadMap(src, name){
+    const im = new Image();
+    im.onload = () => {
+        S.map = im; S.mapName = name || src.split("/").pop();
+        S.mapW = im.naturalWidth; S.mapH = im.naturalHeight;
+        $("#map-name").textContent = S.mapName;
+        $("#tip").textContent = "工具就绪：" + S.mapName;
+        // 角色/视口框的默认位置在这里落定：此时地图尺寸已知。
+        // 如果本地存档里已经有位置（_posInited），就不要覆盖玩家的摆放。
+        if (!S._posInited && S.mapW > 0){
+            S.charPos = { x: S.mapW * 0.5, y: S.mapH * 0.72 };
+            S.viewBox = { x: S.mapW * S.mapScale * 0.5, y: S.mapH * S.mapScale * 0.5 };
+            S._posInited = true;
+        }
+        fitView(); syncUI(); save();
+    };
+    im.onerror = () => { $("#tip").textContent = "地图加载失败，请点『选择图片』手动选"; };
+    im.src = src;
+}
+function loadChar(src, name){
+    const im = new Image();
+    im.onload = () => {
+        S.char = im; S.charName = name || src.split("/").pop();
+        S.charW = im.naturalWidth; S.charH = im.naturalHeight;
+        $("#char-name").textContent = S.charName;
+        computeCharBox();
+        // 注意：不要在这里设 charPos —— 角色图(1MB)通常比地图(2.8MB)先加载完，
+        // 此时 S.mapW 还是 0，会把位置算成 (0,0)。统一交给 loadMap 的回调处理。
+        syncUI(); draw(); save();
+    };
+    im.onerror = () => { toast("角色图加载失败，请手动选择"); };
+    im.src = src;
+}
+/** 用 alpha 通道算人形包围盒；本地 file:// 打开时 canvas 会被污染，失败则退回整图 */
+function computeCharBox(){
+    try {
+        const c = document.createElement("canvas");
+        const MAX = 400;
+        const k = Math.min(1, MAX / Math.max(S.charW, S.charH));
+        c.width = Math.max(1, Math.floor(S.charW * k));
+        c.height = Math.max(1, Math.floor(S.charH * k));
+        const g = c.getContext("2d");
+        g.drawImage(S.char, 0, 0, c.width, c.height);
+        const d = g.getImageData(0, 0, c.width, c.height).data;
+        let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+        for (let y = 0; y < c.height; y++){
+            for (let x = 0; x < c.width; x++){
+                if (d[(y * c.width + x) * 4 + 3] > 12){
+                    if (x < x0) x0 = x; if (x > x1) x1 = x;
+                    if (y < y0) y0 = y; if (y > y1) y1 = y;
+                }
+            }
+        }
+        S.charBox = (x1 < 0) ? { x: 0, y: 0, w: S.charW, h: S.charH }
+                             : { x: x0 / k, y: y0 / k, w: (x1 - x0) / k, h: (y1 - y0) / k };
+    } catch (e) {
+        S.charBox = { x: 0, y: 0, w: S.charW, h: S.charH };
+    }
+}
+/** 人形脚底相对贴图中心的偏移（世界像素） */
+function footOffset(){
+    if (!S.charBox) return 0;
+    return (S.charBox.y + S.charBox.h - S.charH / 2) * S.charScale;
+}
+
+/* ---------------- 视图 ---------------- */
+function fitView(){
+    if (!S.map) return;
+    const wrap = $("#canvas-wrap"), r = wrap.getBoundingClientRect();
+    const MW = S.mapW * S.mapScale, MH = S.mapH * S.mapScale;
+    const z = Math.min(r.width / MW, r.height / MH) * 0.94;
+    S.view.zoom = z;
+    S.view.panX = (r.width - MW * z) / 2 - S.mapOffset.x * z;
+    S.view.panY = (r.height - MH * z) / 2 - S.mapOffset.y * z;
+    updateZoomText(); draw();
+}
+function zoomAt(factor, cx, cy){
+    const wrap = $("#canvas-wrap"), r = wrap.getBoundingClientRect();
+    if (cx === undefined){ cx = r.width / 2; cy = r.height / 2; }
+    const before = scr2world({ x: cx, y: cy });
+    S.view.zoom = Math.min(20, Math.max(0.02, S.view.zoom * factor));
+    S.view.panX = cx - before.x * S.view.zoom;
+    S.view.panY = cy - before.y * S.view.zoom;
+    updateZoomText(); draw();
+}
+function updateZoomText(){ $("#zoom-txt").textContent = Math.round(S.view.zoom * 100) + "%"; }
+
+/* ---------------- 鼠标交互 ---------------- */
+cv.addEventListener("mousedown", (e) => {
+    const s = evScr(e), im = evImg(e);
+    S.mouse.x = s.x; S.mouse.y = s.y; S.mouse.img = im;
+
+    // 中键 / 空格 / 平移工具 → 拖画布
+    if (e.button === 1 || S.spaceDown || S.tool === "pan"){
+        S.panning = true; S.panStart = { x: s.x, y: s.y, panX: S.view.panX, panY: S.view.panY };
+        cv.style.cursor = "grabbing"; return;
+    }
+    if (e.button !== 0) return;
+
+    // 拖动命中：点 → 角色 → 视口框
+    const hitP = S.show.point ? hitPoint(s) : null;
+    if (hitP){ S.dragging = { kind: "point", id: hitP.id }; S.sel = { kind: "point", id: hitP.id }; render(); return; }
+    if (S.show.char && S.char && hitChar(s)){ snapshot(); S.dragging = { kind: "char" }; return; }
+    if (S.show.view && hitViewBox(s)){ S.dragging = { kind: "view", dx: S.viewBox.x - scr2world(s).x, dy: S.viewBox.y - scr2world(s).y }; return; }
+
+    if (S.tool === "point"){
+        snapshot();
+        const id = S.points.length ? Math.max(...S.points.map(p => p.id)) + 1 : 1;
+        S.points.push({ id: id, type: "其他", name: "", x: Math.round(im.x), y: Math.round(im.y), desc: "" });
+        S.sel = { kind: "point", id: id };
+        render(); draw(); save();
+        toast("已添加点位 P" + id + "，去下方填交互需求");
+    } else if (S.tool === "brush"){
+        S.draw = { kind: "poly", id: 0, pts: [{ x: Math.round(im.x), y: Math.round(im.y) }], note: "" };
+    } else if (S.tool === "rect"){
+        S.draw = { kind: "rect", id: 0, x1: Math.round(im.x), y1: Math.round(im.y), x2: Math.round(im.x), y2: Math.round(im.y), note: "" };
+    }
+});
+
+cv.addEventListener("mousemove", (e) => {
+    const s = evScr(e), im = evImg(e);
+    S.mouse.x = s.x; S.mouse.y = s.y; S.mouse.img = im;
+    updateCoord(im);
+
+    if (S.panning){
+        S.view.panX = S.panStart.panX + (s.x - S.panStart.x);
+        S.view.panY = S.panStart.panY + (s.y - S.panStart.y);
+        draw(); return;
+    }
+    if (S.dragging){
+        if (S.dragging.kind === "point"){
+            const p = S.points.find(q => q.id === S.dragging.id);
+            if (p){ p.x = Math.round(im.x); p.y = Math.round(im.y); render(); draw(); }
+        } else if (S.dragging.kind === "char"){
+            S.charPos = { x: im.x, y: im.y }; draw();
+        } else if (S.dragging.kind === "view"){
+            const w = scr2world(s);
+            S.viewBox.x = w.x + S.dragging.dx; S.viewBox.y = w.y + S.dragging.dy; draw();
+        }
+        return;
+    }
+    if (S.draw){
+        if (S.draw.kind === "rect"){
+            S.draw.x2 = Math.round(im.x); S.draw.y2 = Math.round(im.y);
+        } else {
+            const last = S.draw.pts[S.draw.pts.length - 1];
+            const d = Math.hypot(im.x - last.x, im.y - last.y);
+            if (d > 2 / S.mapScale) S.draw.pts.push({ x: Math.round(im.x), y: Math.round(im.y) });
+        }
+        draw();
+        return;
+    }
+    // 光标提示
+    if (S.tool === "pan" || S.spaceDown) cv.style.cursor = "grab";
+    else cv.style.cursor = "crosshair";
+});
+
+window.addEventListener("mouseup", () => {
+    if (S.panning){ S.panning = false; cv.style.cursor = "grab"; }
+    if (S.dragging){ S.dragging = null; save(); }
+    if (S.draw){
+        const w = S.draw; S.draw = null;
+        const ok = w.kind === "rect"
+            ? (Math.abs(w.x2 - w.x1) > 2 && Math.abs(w.y2 - w.y1) > 2)
+            : (w.pts.length >= 2);
+        if (ok){
+            snapshot();
+            const id = S.walls.length ? Math.max(...S.walls.map(v => v.id)) + 1 : 1;
+            w.id = id; S.walls.push(w);
+            toast("已添加空气墙 W" + id);
+        } else {
+            toast("墙太短，已忽略");
+        }
+        render(); draw(); save();
+    }
+});
+
+cv.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const s = evScr(e);
+    zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, s.x, s.y);
+}, { passive: false });
+
+cv.addEventListener("dblclick", (e) => {
+    // 双击点 → 改名
+    const hitP = hitPoint(evScr(e));
+    if (hitP){
+        const p = S.points.find(q => q.id === hitP.id);
+        const v = prompt("给这个点位起个名字（如：正门、左窗）", p.name || "");
+        if (v !== null){ p.name = v.trim(); render(); draw(); save(); }
+    }
+});
+
+function hitPoint(s){
+    const r = 10;
+    for (let i = S.points.length - 1; i >= 0; i--){
+        const w = img2world(S.points[i]), p = world2scr(w);
+        if (Math.hypot(s.x - p.x, s.y - p.y) <= r) return S.points[i];
+    }
+    return null;
+}
+function hitChar(s){
+    const c = world2scr(img2world(S.charPos));
+    const dw = S.charW * S.charScale * S.view.zoom, dh = S.charH * S.charScale * S.view.zoom;
+    return Math.abs(s.x - c.x) < dw / 2 && Math.abs(s.y - c.y) < dh / 2;
+}
+function hitViewBox(s){
+    const c = world2scr(S.viewBox);
+    const w = 1280 * S.view.zoom, h = 720 * S.view.zoom;
+    return Math.abs(s.x - c.x) < w / 2 && Math.abs(s.y - c.y) < h / 2;
+}
+function updateCoord(im){
+    const w = img2world(im);
+    $("#coord").textContent = S.coordSys === "world"
+        ? "世界 (" + fmt(w.x) + ", " + fmt(w.y) + ")   图片 (" + Math.round(im.x) + ", " + Math.round(im.y) + ")"
+        : "图片 (" + Math.round(im.x) + ", " + Math.round(im.y) + ")   世界 (" + fmt(w.x) + ", " + fmt(w.y) + ")";
+}
+
+/* ---------------- 键盘 ---------------- */
+window.addEventListener("keydown", (e) => {
+    if (e.code === "Space"){ S.spaceDown = true; cv.style.cursor = "grab"; e.preventDefault(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z"){ undo(); e.preventDefault(); }
+    if ((e.key === "Delete" || e.key === "Backspace") && S.sel && document.activeElement.tagName !== "INPUT"){
+        delSel(); e.preventDefault();
+    }
+});
+window.addEventListener("keyup", (e) => { if (e.code === "Space") S.spaceDown = false; });
+
+function delSel(){
+    if (!S.sel) return;
+    snapshot();
+    if (S.sel.kind === "point") S.points = S.points.filter(p => p.id !== S.sel.id);
+    else S.walls = S.walls.filter(w => w.id !== S.sel.id);
+    S.sel = null; render(); draw(); save();
+}
+
+/* ---------------- 底部列表 ---------------- */
+let curTab = "pts";
+function render(){
+    $("#cnt-pts").textContent = S.points.length;
+    $("#cnt-wls").textContent = S.walls.length;
+    const b = $("#bbody");
+    if (curTab === "pts") b.innerHTML = renderPts(); else b.innerHTML = renderWls();
+    bindList();
+    draw();
+}
+function renderPts(){
+    if (!S.points.length) return '<div class="empty">还没有点位 —— 选顶部「📍 打点」工具，在地图上点一下</div>';
+    let h = '<table><tr><th style="width:34px">#</th><th style="width:88px">类型</th>'
+          + '<th style="width:120px">名称</th><th style="width:170px">坐标（图 → 世界）</th>'
+          + '<th>交互需求 / 提示词（写清楚你想在这里发生什么）</th><th style="width:80px">操作</th></tr>';
+    S.points.forEach(p => {
+        const w = img2world(p);
+        const sel = (S.sel && S.sel.kind === "point" && S.sel.id === p.id) ? ' style="background:#2a2a44"' : '';
+        h += '<tr' + sel + ' data-kind="point" data-id="' + p.id + '">'
+           + '<td><span class="dot" style="background:' + (TYPE_COLOR[p.type] || TYPE_COLOR["其他"]) + '"></span>' + p.id + '</td>'
+           + '<td><select class="f-type">' + TYPE_KEYS.map(t => '<option' + (t === p.type ? " selected" : "") + '>' + t + '</option>').join("") + '</select></td>'
+           + '<td><input type="text" class="f-name" value="' + esc(p.name) + '" placeholder="如：正门"></td>'
+           + '<td class="co">' + Math.round(p.x) + ',' + Math.round(p.y) + ' → ' + fmt(w.x) + ',' + fmt(w.y) + '</td>'
+           + '<td><input type="text" class="f-desc" value="' + esc(p.desc) + '" placeholder="例：走到这里自动弹对话框「先前的钥匙是开正门的吗」，按 F 尝试开门"></td>'
+           + '<td><button class="small f-loc">定位</button> <button class="small warn f-del">删</button></td></tr>';
+    });
+    return h + "</table>";
+}
+function renderWls(){
+    if (!S.walls.length) return '<div class="empty">还没有空气墙 —— 选顶部「🖌 画笔」或「▭ 矩形墙」，在地图上画</div>';
+    let h = '<table><tr><th style="width:34px">#</th><th style="width:70px">形状</th>'
+          + '<th style="width:230px">范围（图坐标）</th><th>备注（挡什么 / 为什么）</th><th style="width:80px">操作</th></tr>';
+    S.walls.forEach(w => {
+        const sel = (S.sel && S.sel.kind === "wall" && S.sel.id === w.id) ? ' style="background:#2a2a44"' : '';
+        let range;
+        if (w.kind === "rect"){
+            const x1 = Math.min(w.x1, w.x2), y1 = Math.min(w.y1, w.y2);
+            const x2 = Math.max(w.x1, w.x2), y2 = Math.max(w.y1, w.y2);
+            range = "(" + x1 + "," + y1 + ") → (" + x2 + "," + y2 + ")  " + (x2 - x1) + "×" + (y2 - y1);
+        } else {
+            range = "折线 " + w.pts.length + " 点：(" + w.pts[0].x + "," + w.pts[0].y + ") … (" + w.pts[w.pts.length - 1].x + "," + w.pts[w.pts.length - 1].y + ")";
+        }
+        h += '<tr' + sel + ' data-kind="wall" data-id="' + w.id + '">'
+           + '<td><span class="dot" style="background:#e53e3e"></span>' + w.id + '</td>'
+           + '<td>' + (w.kind === "rect" ? "矩形" : "手绘") + '</td>'
+           + '<td class="co">' + range + '</td>'
+           + '<td><input type="text" class="f-note" value="' + esc(w.note) + '" placeholder="例：挡住左侧走廊，防止角色走出画面"></td>'
+           + '<td><button class="small f-loc">定位</button> <button class="small warn f-del">删</button></td></tr>';
+    });
+    return h + "</table>";
+}
+function esc(s){ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"); }
+
+function bindList(){
+    $$("#bbody tr[data-id]").forEach(tr => {
+        const kind = tr.dataset.kind, id = parseInt(tr.dataset.id, 10);
+        const item = kind === "point" ? S.points.find(p => p.id === id) : S.walls.find(w => w.id === id);
+        if (!item) return;
+        const t = tr.querySelector(".f-type");
+        if (t) t.onchange = () => { snapshot(); item.type = t.value; render(); save(); };
+        const n = tr.querySelector(".f-name");
+        if (n) n.oninput = () => { item.name = n.value; draw(); save(); };
+        const d = tr.querySelector(".f-desc");
+        if (d) d.oninput = () => { item.desc = d.value; save(); };
+        const nt = tr.querySelector(".f-note");
+        if (nt) nt.oninput = () => { item.note = nt.value; draw(); save(); };
+        tr.querySelector(".f-del").onclick = () => {
+            snapshot();
+            if (kind === "point") S.points = S.points.filter(p => p.id !== id);
+            else S.walls = S.walls.filter(w => w.id !== id);
+            if (S.sel && S.sel.id === id) S.sel = null;
+            render(); save();
+        };
+        tr.querySelector(".f-loc").onclick = () => { focusOn(item, kind); S.sel = { kind: kind, id: id }; render(); };
+    });
+}
+function focusOn(item, kind){
+    let im;
+    if (kind === "point") im = { x: item.x, y: item.y };
+    else if (item.kind === "rect") im = { x: (item.x1 + item.x2) / 2, y: (item.y1 + item.y2) / 2 };
+    else im = item.pts[0];
+    const wrap = $("#canvas-wrap"), r = wrap.getBoundingClientRect();
+    S.view.zoom = Math.max(S.view.zoom, 1);
+    const w = img2world(im);
+    S.view.panX = r.width / 2 - w.x * S.view.zoom;
+    S.view.panY = r.height / 2 - w.y * S.view.zoom;
+    updateZoomText(); draw();
+}
+
+/* ---------------- 导出文本 ---------------- */
+function buildText(){
+    const L = [];
+    const cb = S.charBox;
+    const chH = cb ? cb.h * S.charScale : 0;
+    const chW = cb ? cb.w * S.charScale : 0;
+    L.push("【城堡内一楼 · 交互点位规划】");
+    L.push("");
+    L.push("■ 地图");
+    L.push("  文件：" + (S.mapName || "未加载") + "，原图 " + S.mapW + "×" + S.mapH);
+    L.push("  世界缩放：" + S.mapScale.toFixed(3) + "，世界偏移：(" + S.mapOffset.x + ", " + S.mapOffset.y + ")");
+    L.push("  世界尺寸：" + fmt(S.mapW * S.mapScale) + "×" + fmt(S.mapH * S.mapScale));
+    L.push("  游戏视口：1280×720");
+    if (S.char){
+        L.push("");
+        L.push("■ 角色参考");
+        L.push("  贴图：" + S.charName + "（" + S.charW + "×" + S.charH + "）");
+        L.push("  显示缩放：" + S.charScale.toFixed(3) + " → 人形显示 " + fmt(chW) + "×" + fmt(chH) + " px");
+        L.push("  脚底相对锚点偏移：" + fmt(footOffset()) + " px；碰撞箱 " + fmt(36 * S.charScale / 0.088) + "×" + fmt(60 * S.charScale / 0.088));
+        L.push("  参考位置（图片坐标）：" + fmt(S.charPos.x) + ", " + fmt(S.charPos.y));
+    }
+    if (S.points.length){
+        L.push("");
+        L.push("■ 交互点（共 " + S.points.length + " 个，坐标格式：图片像素 → 世界坐标）");
+        S.points.forEach(p => {
+            const w = img2world(p);
+            const tag = "[" + p.type + "]" + (p.name ? " " + p.name : "");
+            L.push("  P" + p.id + " " + tag);
+            L.push("      位置：图片(" + Math.round(p.x) + ", " + Math.round(p.y) + ") → 世界(" + fmt(w.x) + ", " + fmt(w.y) + ")");
+            L.push("      需求：" + (p.desc || "（未填写）"));
+        });
+    }
+    if (S.walls.length){
+        L.push("");
+        L.push("■ 空气墙（共 " + S.walls.length + " 条）");
+        S.walls.forEach(w => {
+            if (w.kind === "rect"){
+                const x1 = Math.min(w.x1, w.x2), y1 = Math.min(w.y1, w.y2);
+                const x2 = Math.max(w.x1, w.x2), y2 = Math.max(w.y1, w.y2);
+                const a = img2world({ x: x1, y: y1 }), b = img2world({ x: x2, y: y2 });
+                L.push("  W" + w.id + " 矩形");
+                L.push("      图片：(" + x1 + ", " + y1 + ") → (" + x2 + ", " + y2 + ")   尺寸 " + (x2 - x1) + "×" + (y2 - y1));
+                L.push("      世界：(" + fmt(a.x) + ", " + fmt(a.y) + ") → (" + fmt(b.x) + ", " + fmt(b.y) + ")");
+            } else {
+                L.push("  W" + w.id + " 手绘折线（" + w.pts.length + " 点，图片坐标）");
+                L.push("      " + w.pts.map(p => "(" + p.x + ", " + p.y + ")").join(" → "));
+            }
+            L.push("      备注：" + (w.note || "（无）"));
+        });
+    }
+    L.push("");
+    L.push("■ 需要 AI 做的事");
+    L.push("  请按上面的点位在 Godot 里实现交互，坐标请换算成实际场景坐标（注意地图在 Godot 里的 scale 与 position）。");
+    return L.join("\n");
+}
+
+async function copyText(){
+    const t = buildText();
+    try { await navigator.clipboard.writeText(t); toast("已复制，粘给 AI 即可"); }
+    catch (e) {
+        const ta = document.createElement("textarea");
+        ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); toast("已复制"); }
+        catch (e2) { prompt("复制失败，请手动复制：", t); }
+        document.body.removeChild(ta);
+    }
+}
+
+/* ---------------- 保存 / 读取 ---------------- */
+const LS_KEY = "castle_interaction_planner_v1";
+function save(){
+    try {
+        localStorage.setItem(LS_KEY, JSON.stringify({
+            points: S.points, walls: S.walls, charPos: S.charPos, charScale: S.charScale,
+            mapScale: S.mapScale, mapOffset: S.mapOffset, viewBox: S.viewBox,
+            mapName: S.mapName, charName: S.charName
+        }));
+    } catch (e) {}
+}
+function loadSaved(){
+    try {
+        const raw = localStorage.getItem(LS_KEY); if (!raw) return false;
+        const d = JSON.parse(raw);
+        if (d.points) S.points = d.points;
+        if (d.walls) S.walls = d.walls;
+        if (d.charPos) S.charPos = d.charPos;
+        if (typeof d.charScale === "number") S.charScale = d.charScale;
+        if (typeof d.mapScale === "number") S.mapScale = d.mapScale;
+        if (d.mapOffset) S.mapOffset = d.mapOffset;
+        if (d.viewBox) S.viewBox = d.viewBox;
+        S._posInited = true;      // 存档里有位置，别让 loadMap 再覆盖
+        return true;
+    } catch (e) { return false; }
+}
+
+/* ---------------- UI 同步 ---------------- */
+function syncUI(){
+    $("#cs").value = S.charScale; $("#cs-n").value = S.charScale;
+    $("#ms").value = S.mapScale; $("#ms-n").value = S.mapScale;
+    $("#ox").value = S.mapOffset.x; $("#oy").value = S.mapOffset.y;
+    $("#map-size").textContent = S.mapW + "×" + S.mapH;
+    $("#map-world").textContent = fmt(S.mapW * S.mapScale) + "×" + fmt(S.mapH * S.mapScale);
+    if (S.charBox){
+        const bw = S.charBox.w * S.charScale, bh = S.charBox.h * S.charScale;
+        $("#ch-info").textContent = fmt(bw) + "×" + fmt(bh) + " px";
+        $("#cf-info").textContent = fmt(footOffset()) + " px（锚点下方）";
+        const k = S.charScale / 0.088;
+        $("#cb-info").textContent = fmt(36 * k) + "×" + fmt(60 * k);
+        const mh = S.mapH * S.mapScale;
+        $("#map-in-char").textContent = bh > 0 ? (mh / bh).toFixed(1) : "—";
+    }
+    render();
+}
+
+/* ---------------- 事件绑定 ---------------- */
+$$(".tool").forEach(b => b.onclick = () => {
+    $$(".tool").forEach(x => x.classList.remove("active"));
+    b.classList.add("active"); S.tool = b.dataset.tool;
+    cv.style.cursor = S.tool === "pan" ? "grab" : "crosshair";
+});
+$$(".btab").forEach(b => b.onclick = () => {
+    $$(".btab").forEach(x => x.classList.remove("active"));
+    b.classList.add("active"); curTab = b.dataset.tab; render();
+});
+$("#btn-map").onclick = () => $("#file-map").click();
+$("#btn-char").onclick = () => $("#file-char").click();
+$("#file-map").onchange = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    loadMap(URL.createObjectURL(f), f.name);
+};
+$("#file-char").onchange = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    loadChar(URL.createObjectURL(f), f.name);
+};
+$("#btn-fit").onclick = fitView;
+$("#btn-100").onclick = () => { S.view.zoom = 1; updateZoomText(); draw(); };
+$("#btn-zin").onclick = () => zoomAt(1.2);
+$("#btn-zout").onclick = () => zoomAt(1 / 1.2);
+$("#btn-undo").onclick = undo;
+$("#btn-clear").onclick = () => {
+    if (!confirm("清空所有点位和空气墙？（地图和角色图保留）")) return;
+    snapshot(); S.points = []; S.walls = []; S.sel = null; render(); save();
+};
+$("#btn-copy").onclick = copyText;
+$("#btn-export").onclick = () => {
+    const blob = new Blob([JSON.stringify({
+        map: S.mapName, mapScale: S.mapScale, mapOffset: S.mapOffset,
+        char: S.charName, charScale: S.charScale, charPos: S.charPos,
+        points: S.points, walls: S.walls
+    }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "城堡内一楼-点位规划.json";
+    a.click();
+};
+$("#btn-import").onclick = () => $("#file-json").click();
+$("#file-json").onchange = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+        try {
+            const d = JSON.parse(rd.result);
+            snapshot();
+            if (d.points) S.points = d.points;
+            if (d.walls) S.walls = d.walls;
+            if (d.charPos) S.charPos = d.charPos;
+            if (d.charScale) S.charScale = d.charScale;
+            if (d.mapScale) S.mapScale = d.mapScale;
+            if (d.mapOffset) S.mapOffset = d.mapOffset;
+            syncUI(); render(); save(); toast("导入成功");
+        } catch (err) { toast("JSON 解析失败"); }
+    };
+    rd.readAsText(f);
+};
+$("#btn-toggle").onclick = () => {
+    const b = $("#bottom"), c = $("#canvas-wrap");
+    if (b.classList.toggle("collapsed")){
+        c.style.bottom = "34px"; $("#btn-toggle").textContent = "▲";
+    } else {
+        c.style.bottom = "268px"; $("#btn-toggle").textContent = "▼";
+    }
+    setTimeout(resize, 0);
+};
+$("#cs").oninput = (e) => { S.charScale = parseFloat(e.target.value); $("#cs-n").value = S.charScale; syncUI(); save(); };
+$("#cs-n").oninput = (e) => { const v = parseFloat(e.target.value); if (!isNaN(v)){ S.charScale = v; $("#cs").value = v; syncUI(); save(); } };
+$("#ms").oninput = (e) => { S.mapScale = parseFloat(e.target.value); $("#ms-n").value = S.mapScale; syncUI(); save(); };
+$("#ms-n").oninput = (e) => { const v = parseFloat(e.target.value); if (!isNaN(v)){ S.mapScale = v; $("#ms").value = v; syncUI(); save(); } };
+$("#ox").oninput = (e) => { const v = parseFloat(e.target.value) || 0; S.mapOffset.x = v; syncUI(); save(); };
+$("#oy").oninput = (e) => { const v = parseFloat(e.target.value) || 0; S.mapOffset.y = v; syncUI(); save(); };
+[["g-grid","grid"],["g-point","point"],["g-wall","wall"],["g-char","char"],["g-view","view"]].forEach(([id, key]) => {
+    $("#" + id).onchange = (e) => { S.show[key] = e.target.checked; draw(); };
+});
+$("#coord-sys").onchange = (e) => { S.coordSys = e.target.value; };
+$("#btn-char-here").onclick = () => {
+    if (!S.char) return;
+    S.charPos = { x: S.mouse.img.x, y: S.mouse.img.y }; draw(); save(); toast("角色已移到鼠标处");
+};
+$("#btn-char-center").onclick = () => {
+    if (!S.char) return;
+    S.charPos = { x: S.mapW / 2, y: S.mapH / 2 }; draw(); save();
+};
+
+function toast(msg){
+    const t = $("#toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 1600);
+}
+
+/* ---------------- 启动 ---------------- */
+function boot(){
+    resize();
+    const has = loadSaved();
+    loadMap(DEFAULT_MAP, "一楼.png");
+    loadChar(DEFAULT_CHAR, "面朝南方.png");
+    if (has) setTimeout(() => { syncUI(); }, 300);
+    setTimeout(resize, 400);
+}
+boot();
+</script>
+</body>
+</html>

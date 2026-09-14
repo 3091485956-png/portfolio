@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="GGKrDYRQyGza0oM9u4c2Hu">
+<head data-page-node-id="qiyrzSIFoEwveRMX0aenit">
+    <meta charset="UTF-8" data-page-node-id="SGnpJvKXFs1NkQ2n2PZiuQ">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="3Opz9VxLThYsWVh71BgVuo">
+    <title>地图拼接编辑器 v2</title>
+    <!-- 哥特体字体源；若本机离线加载失败，会自动回退到系统古典字体（见 .f-* 字体栈） -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" data-page-node-id="279SaWETL1HzEwBjomMm7s">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin data-page-node-id="c0BKDiIS0OU8YuYg5vXSxL">
+    <link href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Cinzel+Decorative:wght@700&family=Cinzel:wght@600&family=Noto+Serif+SC:wght@700&family=Noto+Sans+SC:wght@700&display=swap" rel="stylesheet" data-page-node-id="HlWBnaltDHUFraRm6bhHS5">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            overflow: hidden;
+        }
+        #toolbar {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.85);
+            padding: 8px 16px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            z-index: 1000;
+            flex-wrap: wrap;
+        }
+        #toolbar button {
+            background: #4a5568;
+            color: white;
+            border: none;
+            padding: 7px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        #toolbar button:hover { background: #5a6578; }
+        #toolbar button.active { background: #ed64a6; }
+        #toolbar button.wall-on { background: #e53e3e; }
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255,255,255,0.06);
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        .toolbar-group label { font-size: 12px; color: #aaa; }
+        .toolbar-group input {
+            width: 60px;
+            padding: 3px 6px;
+            background: #2d3748;
+            border: 1px solid #4a5568;
+            color: white;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .toolbar-group select {
+            padding: 3px 5px;
+            background: #2d3748;
+            border: 1px solid #4a5568;
+            color: white;
+            border-radius: 3px;
+            font-size: 12px;
+            max-width: 150px;
+        }
+        /* 黄色字幕开关按钮的"开"状态 */
+        #btn-sync.wall-on { background: #166534; }
+        #info {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.92);
+            padding: 10px 16px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            z-index: 1000;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        #canvas-container {
+            position: fixed;
+            top: 46px; left: 0; right: 0; bottom: 260px;
+            overflow: auto;
+            background: #0f0f1a;
+        }
+        #canvas {
+            position: relative;
+            width: 5120px;
+            height: 810px;   /* 720 地图 + 90 字幕时间轴 */
+            margin: 20px;
+            background: #000;
+        }
+        #map-area {
+            position: relative;
+            width: 100%;
+            height: 720px;
+        }
+        .map-layer {
+            position: absolute;
+            cursor: move;
+            user-select: none;
+            border: 2px solid transparent;
+        }
+        .map-layer.selected { border-color: #ed64a6; z-index: 100; }
+        .map-layer img { display: block; pointer-events: none; }
+        /* 空气墙红线 */
+        .wall-line {
+            position: absolute;
+            background: rgba(255, 50, 50, 0.9);
+            z-index: 500;
+            pointer-events: auto;
+        }
+        .wall-line.h { width: 100%; height: 2px; cursor: ns-resize; }
+        .wall-line.v { width: 2px; height: 100%; cursor: ew-resize; }
+        .wall-line .wall-label {
+            position: absolute;
+            background: #e53e3e;
+            color: white;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+        .wall-line.h .wall-label { left: 8px; top: -22px; }
+        .wall-line.v .wall-label { top: 8px; left: 6px; writing-mode: vertical-lr; }
+        .wall-line.hidden { display: none; }
+        .param-display {
+            background: rgba(255,255,255,0.05);
+            padding: 6px 10px;
+            border-radius: 4px;
+            margin: 3px 0;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .param-display strong { color: #ed64a6; }
+        .param-display.wall strong { color: #fc8181; }
+        #export-output {
+            margin-top: 8px;
+            color: #4ade80;
+            white-space: pre-wrap;
+        }
+        .help { color: #888; font-size: 12px; }
+
+        /* ===== 字幕调试功能 ===== */
+        #sub-layer { position: absolute; left:0; top:0; width:100%; height:100%; z-index:300; pointer-events:none; }
+        #sub-layer.off { display:none; }
+        .sub-box { position:absolute; transform:translate(-50%,-50%); cursor:grab; pointer-events:auto;
+                   padding:3px 8px; border-radius:5px; border:1px dashed transparent; white-space:nowrap; }
+
+        /* 字幕字体：默认哥特体（Blackletter），中文字形自动回退到古典衬线 */
+        .sub-box .txt {
+            font-size: var(--sub-size, 26px);
+            font-weight: 700;
+            color: #ffd54a;
+            letter-spacing: 1px;
+            line-height: 1.35;
+            -webkit-text-stroke: var(--sub-stroke, 3px) var(--sub-stroke-color, #120c00);
+            paint-order: stroke fill;
+            text-shadow:
+                0 0 2px rgba(0,0,0,.9),
+                0 2px 5px rgba(0,0,0,.95),
+                0 0 14px rgba(255,190,40,.35);
+        }
+        /* 字形：哥特 Blackletter */
+        #sub-layer.f-gothic .txt {
+            font-family: 'UnifrakturMaguntia', 'Old English Text MT', 'Cloister Black',
+                         'Blackadder ITC', '华文隶书', 'STLiti', 'STZhongsong', 'SimSun', serif;
+            font-style: normal;
+        }
+        /* 字形：哥特碑铭（全大写罗马碑文体，中世纪感强） */
+        #sub-layer.f-cinzel .txt {
+            font-family: 'Cinzel Decorative', 'Cinzel', 'Trajan Pro', 'Times New Roman',
+                         '华文中宋', 'STZhongsong', 'SimSun', serif;
+            font-weight: 700;
+        }
+        /* 字形：古典衬线（中文更清晰） */
+        #sub-layer.f-serif .txt {
+            font-family: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', '华文中宋',
+                         'STZhongsong', 'SimSun', 'Georgia', serif;
+        }
+        /* 字形：粗黑描边（日式"哥特体"=黑体，游戏 UI 最清晰） */
+        #sub-layer.f-sans .txt {
+            font-family: 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            font-weight: 700;
+        }
+        .sub-box.dim { opacity:.13; }
+        .sub-box.selected { border-color:#fff; background:rgba(0,0,0,.32); }
+        .sub-box.dragging { cursor:grabbing; }
+
+        #player-pin { position:absolute; top:0; height:100%; width:0; border-left:2px solid #3b82f6;
+            z-index:320; pointer-events:none; }
+        #player-pin.off { display:none; }
+        #player-pin::after { content:"角色"; position:absolute; top:2px; left:3px;
+            background:#3b82f6; color:#fff; font-size:10px; padding:1px 5px; border-radius:3px; white-space:nowrap; }
+
+        /* 时间轴 */
+        #timeline { position:absolute; left:0; top:720px; height:90px; background:#151522;
+            border-top:2px solid #3a3a4d; z-index:400; user-select:none; }
+        #timeline.off { display:none; }
+        .tl-tick { position:absolute; bottom:0; width:1px; background:#333344; height:10px; }
+        .tl-tick.major { height:16px; background:#55556a; }
+        .tl-label { position:absolute; top:4px; transform:translateX(-50%); font-size:10px; color:#8a8a9c; white-space:nowrap; }
+        .tl-label small { display:block; color:#5f5f72; font-size:9px; text-align:center; }
+        .tl-line { position:absolute; top:26px; bottom:22px; width:0; cursor:ew-resize; z-index:3; }
+        .tl-line.red { border-left:3px solid #ef4444; }
+        .tl-line.green { border-left:3px solid #22c55e; }
+        .tl-line.selected { box-shadow:0 0 0 3px rgba(59,130,246,.3); }
+        .tl-line .tag { position:absolute; top:-15px; left:-8px; min-width:15px; height:15px;
+            padding:0 3px; border-radius:8px; font-size:10px; line-height:15px; text-align:center; color:#fff; }
+        .tl-line.green .tag { top:auto; bottom:-15px; }
+        .tl-line.red .tag { background:#ef4444; }
+        .tl-line.green .tag { background:#22c55e; }
+        .tl-range { position:absolute; top:40px; height:8px; border-radius:4px;
+            background:linear-gradient(90deg,rgba(239,68,68,.4),rgba(34,197,94,.4)); pointer-events:none; z-index:2; }
+        #tl-cursor { position:absolute; top:0; bottom:0; width:0; border-left:2px solid #3b82f6; cursor:ew-resize; z-index:5; }
+        #tl-cursor .tl-flag { position:absolute; top:22px; left:4px; background:#3b82f6; color:#fff;
+            font-size:10px; padding:2px 6px; border-radius:4px; white-space:nowrap; }
+        #tl-hint { position:absolute; right:10px; top:5px; font-size:10px; color:#6a6a80; }
+
+        /* 底部面板 tabs + 字幕列表 */
+        .tabs { display:flex; gap:6px; margin-bottom:8px; }
+        .tabs button { background:#2d3748; color:#9aa3b2; border:none; padding:5px 12px;
+            border-radius:4px; cursor:pointer; font-size:12px; }
+        .tabs button.on { background:#ed64a6; color:#fff; }
+        .sub-row { display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:5px 8px;
+            background:rgba(255,255,255,0.04); border-radius:4px; margin-bottom:5px; font-size:12px; }
+        .sub-row.selected { background:rgba(237,100,166,.16); outline:1px solid #ed64a6; }
+        .sub-row .num { width:20px; height:20px; border-radius:50%; background:#ffd54a; color:#5b4a00;
+            font-size:11px; font-weight:700; text-align:center; line-height:20px; flex:none; }
+        .sub-row input[type=text] { flex:1 1 200px; min-width:150px; padding:3px 6px; background:#2d3748;
+            border:1px solid #4a5568; color:#fff; border-radius:3px; font-size:12px; font-family:inherit; }
+        .sub-row input[type=number] { width:70px; padding:3px 5px; background:#2d3748; border:1px solid #4a5568;
+            color:#fff; border-radius:3px; font-size:12px; }
+        .sub-row .ro { color:#8a8a9c; min-width:108px; }
+        .sub-row .del { background:#742a2a; color:#fff; border:none; padding:3px 8px;
+            border-radius:3px; cursor:pointer; font-size:11px; }
+        .sub-row .del:hover { background:#9b2c2c; }
+        #subs-empty { color:#888; padding:10px; font-size:12px; }
+        /* 顶部轻提示（不打断操作） */
+        #flash-msg { position:fixed; top:52px; left:50%; transform:translateX(-50%) translateY(-16px);
+            background:rgba(22,101,52,.95); color:#dcfce7; border:1px solid #4ade80;
+            padding:7px 16px; border-radius:6px; font-size:13px; z-index:9999;
+            opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
+        #flash-msg.show { opacity:1; transform:translateX(-50%) translateY(0); }
+        /* 导出区的问题提示 */
+        .warn-box { background:rgba(120,53,15,.35); border:1px solid #f59e0b; color:#fde68a;
+            padding:6px 10px; border-radius:4px; margin-bottom:8px; font-size:12px; white-space:normal; }
+    </style>
+</head>
+<body data-page-node-id="XVijQHhCTalNfFYE1Y5AME">
+    <div id="toolbar" data-page-node-id="S3fQAIMruV7ot5AAqH4PBY">
+        <button id="btn-map0" onclick="selectMap(0)" data-page-node-id="d8yYzy47O7PApH37CzAY0q">地图0（出生地）</button>
+        <button id="btn-map1" class="active" onclick="selectMap(1)" data-page-node-id="ydadSqgIprAmGRKnXegMMA">地图1（过渡地图1）</button>
+        <button id="btn-map2" onclick="selectMap(2)" data-page-node-id="Ij3GtwhToIvPkqx8Sv5sJS">地图2（城堡外）</button>
+        <button onclick="resetMaps()" data-page-node-id="WEBIaeahrKakbavLgedecp">重置位置</button>
+        <button id="btn-walls" class="wall-on" onclick="toggleWalls()" data-page-node-id="wPxxtIFIc74Bf3xAoChx9g">空气墙：显示中</button>
+        <div class="toolbar-group" data-page-node-id="vN0enpiqhO8FyFRpEy2W5F">
+            <label data-page-node-id="IoZaxhAFAtgGHrgQggucTA">融合宽度(px)</label>
+            <input type="number" id="fade-input" value="64" min="0" max="300" onchange="setFade(this.value)" data-page-node-id="uAgH2rQIsH1PrOXR1HCi4k">
+        </div>
+        <button onclick="exportParams()" data-page-node-id="3e3zGht7LqtD2DTGVi20Br">📋 导出拼接参数</button>
+        <span style="color:#4a5568" data-page-node-id="7tHBDVQ1GrFR4ibeH3PJSK">|</span>
+        <button id="btn-subs" class="wall-on" onclick="toggleSubs()" data-page-node-id="aUZOJeaC6dnH1fbAAJAI2f">💬 字幕：显示中</button>
+        <button onclick="addSubtitle()" data-page-node-id="8rxalAhuwQZPhCOR5492mq">➕ 新建字幕</button>
+        <div class="toolbar-group" data-page-node-id="UK1jyFo5ms3BOFdswCvj0l">
+            <label data-page-node-id="oLKJEB58k1o2KoQ2O2e5Ad">字形</label>
+            <select id="font-input" onchange="setSubFont(this.value)" data-page-node-id="sIOroeC4tvs6vemnaEEOpa">
+                <option value="gothic" data-page-node-id="6uNvksYirREVkM0VPseMLW">哥特 Blackletter</option>
+                <option value="cinzel" data-page-node-id="QTdZRRKOudkwgXzVwVIjLi">哥特碑铭 Cinzel</option>
+                <option value="serif" data-page-node-id="SgW8s8ef8ayri5xeo0ZlER">古典衬线</option>
+                <option value="sans" data-page-node-id="wHEzDOq3q68zE2JcAqybRG">粗黑描边</option>
+            </select>
+        </div>
+        <div class="toolbar-group" data-page-node-id="v8ewz98UA6ENeaMPZRSank">
+            <label data-page-node-id="eR6Kke3YOeKp1l2oiluThn">字号(px)</label>
+            <input type="number" id="size-input" value="26" min="10" max="80" step="1" onchange="setSubSize(this.value)" data-page-node-id="rXP5PFNAPIuE8Frj76BtOY">
+        </div>
+        <div class="toolbar-group" data-page-node-id="aMTECRj6z79MAIh6Ww4dff">
+            <label data-page-node-id="ZUcWeibxocEaCMjrKGVmUT">描边(px)</label>
+            <input type="number" id="stroke-input" value="3" min="0" max="10" step="1" onchange="setSubStroke(this.value)" data-page-node-id="sAi9Zx7SLAUDVqCwYMuDDC">
+        </div>
+        <div class="toolbar-group" data-page-node-id="2EZNdKqA5r6CchKpx5U3cB">
+            <label data-page-node-id="G0q6DePgI1mZy95ssJvKtm">时长(s)</label>
+            <input type="number" id="dur-input" value="2.0" min="0.2" step="0.5" onchange="setDefaultDur(this.value)"
+                   title="仅「固定时长」消失方式下生效" data-page-node-id="wIoa46MdVBWAuCCZEBe7Nd">
+        </div>
+        <div class="toolbar-group">
+            <label>消失方式</label>
+            <select id="endmode-input" onchange="setEndMode(this.value)"
+                    title="走到最后一个字：角色走到这条字幕的最后一个字（右端）时消散；固定时长：不管字多长都按秒数消失">
+                <option value="width">走到最后一个字</option>
+                <option value="time">固定时长</option>
+            </select>
+        </div>
+        <div class="toolbar-group">
+            <label>余量(px)</label>
+            <input type="number" id="pad-input" value="0" min="0" step="20"
+                   title="走完整条字幕后再多走多少像素才消失，让字散得从容一点">
+        </div>
+        <div class="toolbar-group" data-page-node-id="YWJZ6LGBKljHy4vqYHCgzH">
+            <label data-page-node-id="h4SmRFJk58M6ZAMG52Jiaj">速度(px/s)</label>
+            <input type="number" id="speed-input" value="200" step="10" onchange="setSpeed(this.value)" data-page-node-id="nO7YZeeUs0xM80zTPa6Vee">
+        </div>
+        <div class="toolbar-group" data-page-node-id="almFIjrfxfdUMW8Bp1esgm">
+            <label data-page-node-id="TX9YIGy5FtFxnl2yblZYLj">间隔(s)</label>
+            <input type="number" id="gap-input" value="0.5" min="0" step="0.1"
+                   title="依次排队时，上一条消失到下一条浮现之间的空档秒数" data-page-node-id="3kVw1N7krEHKAmrPCUEji6">
+        </div>
+        <button id="btn-sync" class="wall-on" onclick="toggleSync()" title="开启后：在画布上拖黄色字幕时，红线触发点自动跟着走到同一个 x；关闭后两者独立，可让字幕浮现在别处" data-page-node-id="pm8ZQwjwJE5J9HwnJIfGXK">🔗 拖文字同步触发点</button>
+        <button onclick="alignTriggerToPos()" title="把所有字幕的触发点 x 设为它的浮现位置 x —— 角色走到字浮现的那个位置就出现" data-page-node-id="8GrANxXnLrMl95n5rHZyRA">🎯 触发=浮现x</button>
+        <button onclick="queueSubtitles()" title="按浮现位置从左到右排序，依次间隔触发，形成一条接一条的旁白" data-page-node-id="sbY6XzKU0pPWFHkr8Hm7Zi">⏱ 依次排队</button>
+        <button onclick="exportSubtitles()" data-page-node-id="vsx0NQmFZemJ8MCDj8kFYv">📋 导出字幕参数</button>
+        <span class="help" data-page-node-id="Azy6JeqHvd7TdfWuBvSjFE">拖图=移动 | 滚轮=缩放 | 双击时间轴=建字幕 | 拖红/绿线=触发/时长 | 拖蓝线=预览</span>
+    </div>
+
+    <div id="canvas-container" data-page-node-id="jU5h3haGBKb0qHDaB2UPBc">
+        <div id="canvas" data-page-node-id="7InS7o2b0CEHD1SSfuPKqq">
+            <div id="map-area" data-page-node-id="bTsaca3obq92YpUVrUj0yM">
+                <div id="map0" class="map-layer" data-map="0" data-page-node-id="8u4gMkKVsJ0vTt14kjjJje">
+                    <img id="img0" src="" alt="地图0" data-page-node-id="FVNYsf91clDJfZadPG7w0X">
+                </div>
+                <div id="map1" class="map-layer selected" data-map="1" data-page-node-id="XRgfImDB0w9BTe85hODSQR">
+                    <img id="img1" src="" alt="地图1" data-page-node-id="hz6PjR4Kt9dq7uWuByq3YS">
+                </div>
+                <div id="map2" class="map-layer" data-map="2" data-page-node-id="K7ZLTLJqLvxk2GGbe1bGFi">
+                    <img id="img2" src="" alt="地图2" data-page-node-id="T2J9uYiBtSa8GHWnx35N5O">
+                </div>
+                <!-- 空气墙（玩家活动区边界） -->
+                <div id="wall-top" class="wall-line h" data-wall="top" style="top:220px;" data-page-node-id="a6DiR3ghmxtuIGBdqirKqX">
+                    <div class="wall-label" data-page-node-id="Lm9upiNXjMhWY5mUGeWYza">上墙 y=<span data-page-node-id="zMuACExqGmZJp1KtvGHByt">220</span></div>
+                </div>
+                <div id="wall-bottom" class="wall-line h" data-wall="bottom" style="top:471px;" data-page-node-id="E7Zdp9jqD4RzTYSMffeCpy">
+                    <div class="wall-label" data-page-node-id="CAdHeaoOdt2TQzZH6HaLTB">下墙 y=<span data-page-node-id="ChSYepWbJJBlQaAADGCJqQ">471</span></div>
+                </div>
+                <div id="wall-left" class="wall-line v" data-wall="left" style="left:1282px;" data-page-node-id="NyDBmACIy9FKt4ZSOD1n1X">
+                    <div class="wall-label" data-page-node-id="xM2FShF3ORKzSXUmQRO9N8">左墙 x=<span data-page-node-id="HbiVZRWdV1QjMqsyP7dt0E">1282</span></div>
+                </div>
+                <div id="wall-right" class="wall-line v" data-wall="right" style="left:4186px;" data-page-node-id="j8R5ph8pBMBmLy4IbRr48G">
+                    <div class="wall-label" data-page-node-id="KPxH3efyYAkbWLGYfhVH17">右墙 x=<span data-page-node-id="HFqwM4HCmEjwF7AXPWOQTB">4186</span></div>
+                </div>
+                <!-- 字幕层（黄字可拖） + 角色位置指针 -->
+                <div id="sub-layer" data-page-node-id="U5B0RbvVgg1Rmtz6h8alI6"></div>
+                <div id="player-pin" data-page-node-id="jEchI3yw90z3SAJL1OLVCQ"></div>
+            </div>
+            <!-- 字幕时间轴 -->
+            <div id="timeline" data-page-node-id="woD0eR2Kh8iE0LYsM9JTjw">
+                <div id="tl-ticks" data-page-node-id="DNegqjUdlzsC04zCuI1ACk"></div>
+                <div id="tl-lines" data-page-node-id="4FbC49IbpU8r6T1mFXmdYU"></div>
+                <div id="tl-cursor" data-page-node-id="hhqoR81JW0v9q6HUqt0EIF"><span class="tl-flag" data-page-node-id="bE9f7LlEYVkOILzOanOHMb">x=0 · 0.0s</span></div>
+                <div id="tl-hint" data-page-node-id="EvLSmYZ2IuCKtVCtQCmNXO">双击空白新建字幕 ｜ 拖红线=触发 ｜ 拖绿线=时长 ｜ 拖蓝线=预览</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="info" data-page-node-id="wChnDucAF7k9ojU0RtFHmc">
+        <div class="tabs" data-page-node-id="9ksRzmP0556inKYoJKVDA3">
+            <button id="tab-splice" class="on" onclick="switchTab('splice')" data-page-node-id="fHxASvbHS9wQPN83Qi3OCP">📐 拼接参数</button>
+            <button id="tab-subs" onclick="switchTab('subs')" data-page-node-id="f5sv3aNvtXFf6oHQOEegI9">💬 字幕（<span id="sub-count" data-page-node-id="Tja5R6WtxV5lyQPlXqPimS">0</span>）</button>
+        </div>
+        <div id="panel-splice" data-page-node-id="bukuCEAlP2Kd9RlrEBPEOn">
+            <div data-page-node-id="E5E63DaR4MdGYGK8u9XvAa">
+                <div class="param-display" id="params0" data-page-node-id="AyUxpWpUpOpZtj6zaJ2AZA">
+                    <strong data-page-node-id="JztdyZ4eTMFrh4JaTGD0k7">地图0</strong> X:<span id="x0" data-page-node-id="K1RBiYBVSxF0z9x7rmLli9">0</span> Y:<span id="y0" data-page-node-id="UtRuFgTvMMXItW2bTei1KG">0</span> 缩放:<span id="s0" data-page-node-id="vtefNokVhbheFJhKA4CGh7">1.00</span>
+                </div>
+                <div class="param-display" id="params1" data-page-node-id="0xIU4LtZMZqOcaepCqcAnO">
+                    <strong data-page-node-id="xkuehkR79Da9z2hc7sC42G">地图1</strong> X:<span id="x1" data-page-node-id="rD0uV5thXz78EIa0aaEofV">1240</span> Y:<span id="y1" data-page-node-id="ukt9oY6BqriE7kMhz2PQUk">0</span> 缩放:<span id="s1" data-page-node-id="g2DJzy1MbEXmWDZJlhFNOe">1.00</span>
+                </div>
+                <div class="param-display" id="params2" data-page-node-id="OGxOzrtEefD5W77AwjLTBe">
+                    <strong data-page-node-id="H11U6GTAuAF2aJGgAWzand">地图2</strong> X:<span id="x2" data-page-node-id="jpGie2qpHCyDpw9cIcQEYI">2445</span> Y:<span id="y2" data-page-node-id="sKjqxNTocnMtERedhT0skL">-524</span> 缩放:<span id="s2" data-page-node-id="oEjEUlC3AEqXKKhHzEieRs">1.80</span>
+                </div>
+                <div class="param-display wall" data-page-node-id="JC5vfkryAhCsLevhDmrEDM">
+                    <strong data-page-node-id="6vFlNZh8Z10TREKHMBbJnS">空气墙</strong> 上:<span id="w-top" data-page-node-id="e93ZRubhhRzrq8WyvX8FFe">220</span> 下:<span id="w-bottom" data-page-node-id="sfMXHMdhbO0xE9Emh5UlYK">471</span>
+                    左:<span id="w-left" data-page-node-id="W2b9kHcTx4UyfvKqqq9Hly">1282</span> 右:<span id="w-right" data-page-node-id="tGnoNFidY1v9IrV1YVHYxe">4186</span>
+                </div>
+            </div>
+        </div>
+        <div id="panel-subs" style="display:none" data-page-node-id="etplOJiT47fVyI69D41sw3">
+            <div id="sub-list" data-page-node-id="l8B8iAxglGDBQMIZ3UpjXJ"><div id="subs-empty" data-page-node-id="Gdw9VGOnHmUQ180F6zCHrW">还没有字幕 —— 到上方时间轴<b data-page-node-id="xN2qY7tPbzL4egrZDPdNSH">双击空白处</b>新建第一条</div></div>
+        </div>
+        <div id="export-output" data-page-node-id="wseuzBGreFrEom7Ih4UOxc"></div>
+    </div>
+
+    <script>
+        let selectedMap = 1;
+        let isDragging = false;
+        let draggingWall = null;
+        let dragStartX, dragStartY, mapStartX, mapStartY, wallStart;
+        let wallsVisible = true;
+        let fadeLocal = 64; // 融合宽度（原图像素单位，屏幕上会乘以地图2的缩放）
+
+        // 与游戏场景同步的默认值（出生地 / 过渡地图1 / 城堡外 三张都在）
+        // 2026-09-05：过渡地图1（地图1）位置由 1280 改成 1240（为融合出生地接缝左移 40px）；
+        //            其他都保持原值。游戏内 main.tscn 的 fade_left 也已对应调整。
+        const DEFAULTS = {
+            0: { x: 0,    y: 0,    scale: 1.0 },
+            1: { x: 1240, y: 0,    scale: 1.0 },
+            2: { x: 2445, y: -524, scale: 1.8 }
+        };
+        const WALL_DEFAULTS = { top: 220, bottom: 471, left: 1282, right: 4186 };
+
+        const maps = {
+            0: { ...DEFAULTS[0], element: null, img: null },
+            1: { ...DEFAULTS[1], element: null, img: null },
+            2: { ...DEFAULTS[2], element: null, img: null }
+        };
+        const walls = { ...WALL_DEFAULTS };
+
+        // ===== 字幕调试状态 =====
+        // 画布坐标 = 游戏世界坐标（DEFAULTS 用的就是游戏值），
+        // 所以字幕的 posX/posY 可直接拿去 Godot 用，无需二次换算。
+        let subtitles = [];          // { id, text, triggerX, duration, posX, posY }
+        let nextSubId = 1;
+        let selectedSubId = null;
+        let subDefaultDur = 2.0;     // 新建字幕默认时长（秒）
+        let playerSpeed = 200;       // 角色速度 px/s（与 player.gd 的 move_speed 一致）
+        let cursorX = 0;             // 时间轴蓝指针＝角色预览位置
+        let subsVisible = true;
+        let lastTotalW = 0;
+        // 字幕外观（哥特体 + 黄色 + 描边）
+        let subFont = 'gothic';      // gothic | cinzel | serif | sans
+        let subSize = 26;            // px（画布 = 游戏 720p 世界坐标，26px 约等于游戏内 26px）
+        let subStroke = 3;           // 描边粗细 px
+        // 拖黄色字幕时，红线触发点是否跟着走到同一个 x（默认开，最符合直觉）
+        let syncTrigger = true;
+        // 消失方式：'width' = 角色走出"字幕文字本身的宽度"后消失（新默认）
+        //           'time'  = 固定多少秒后消失
+        let endMode = 'width';
+        // width 模式下的余量：走完整条字幕后再多走这么多 px 才消失
+        let endPad = 0;
+        // 文字宽度缓存（DOM 实测，避免每帧 reflow）
+        const widthCache = new Map();
+        let widthDirty = true;
+
+        function init() {
+            const img0 = document.getElementById('img0');
+            const img1 = document.getElementById('img1');
+            const img2 = document.getElementById('img2');
+            img0.src = './assets/scene_born.jpg';
+            img1.src = './assets/scene_transit.jpg';
+            img2.src = './assets/scene_castle_out.jpg';
+            img0.onerror = () => promptForFile(0);
+            img1.onerror = () => promptForFile(1);
+            img2.onerror = () => promptForFile(2);
+
+            [0,1,2].forEach(n => {
+                maps[n].element = document.getElementById(`map${n}`);
+                maps[n].img = document.getElementById(`img${n}`);
+            });
+
+            // 图片就绪后重算地图总宽（时间轴宽度依赖它）
+            [img0, img1, img2].forEach(im => im.addEventListener('load', updateTimelineWidth));
+
+            [0,1,2].forEach(updateMapPosition);
+            updateFadeMask();
+            fitToolbar();
+            loadSubs();          // 内部会 applySubStyle()；无存档时用默认哥特体
+            applySubStyle();     // 兜底：保证首次访问也是哥特黄字
+            setupEventListeners();
+            setupSubtitleEvents();
+            renderTimeline();
+            renderSubs();
+            updateSubVisuals();
+
+            // 启动自检：触发点还停在 x=0 的字幕会被角色一出生就全部触发，主动提醒
+            setTimeout(() => {
+                const bad = subtitles.filter(s => s.triggerX <= 0).length;
+                if (bad > 1) flashMsg(`⚠️ 有 ${bad} 条字幕触发点还停在 x=0 —— 点「🎯 触发=浮现x」一键对齐`);
+            }, 700);
+        }
+
+        // 工具栏按钮变多可能换行，动态把画布区顶到工具栏下方
+        function fitToolbar() {
+            const tb = document.getElementById('toolbar');
+            document.getElementById('canvas-container').style.top = (tb.offsetHeight + 2) + 'px';
+        }
+        window.addEventListener('resize', fitToolbar);
+
+        function promptForFile(mapNum) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/png';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => { maps[mapNum].img.src = ev.target.result; };
+                    reader.readAsDataURL(file);
+                }
+            };
+            input.click();
+        }
+
+        function setupEventListeners() {
+            const canvas = document.getElementById('canvas');
+
+            canvas.addEventListener('mousedown', (e) => {
+                // 优先拖墙线
+                if (e.target.classList.contains('wall-line')) {
+                    draggingWall = e.target.dataset.wall;
+                    dragStartX = e.clientX;
+                    dragStartY = e.clientY;
+                    wallStart = walls[draggingWall];
+                    e.preventDefault();
+                    return;
+                }
+                if (e.target.closest('.map-layer')) {
+                    const layer = e.target.closest('.map-layer');
+                    selectMap(parseInt(layer.dataset.map));
+                    isDragging = true;
+                    dragStartX = e.clientX;
+                    dragStartY = e.clientY;
+                    mapStartX = maps[selectedMap].x;
+                    mapStartY = maps[selectedMap].y;
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (draggingWall) {
+                    if (draggingWall === 'top' || draggingWall === 'bottom') {
+                        walls[draggingWall] = Math.round(wallStart + (e.clientY - dragStartY));
+                    } else {
+                        walls[draggingWall] = Math.round(wallStart + (e.clientX - dragStartX));
+                    }
+                    updateWallPosition(draggingWall);
+                    return;
+                }
+                if (isDragging) {
+                    maps[selectedMap].x = mapStartX + (e.clientX - dragStartX);
+                    maps[selectedMap].y = mapStartY + (e.clientY - dragStartY);
+                    updateMapPosition(selectedMap);
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+                draggingWall = null;
+            });
+
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? -0.05 : 0.05;
+                maps[selectedMap].scale = Math.max(0.1, Math.min(3.0, maps[selectedMap].scale + delta));
+                updateMapPosition(selectedMap);
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT') return;
+                const step = e.shiftKey ? 10 : 1;
+                let handled = true;
+                switch(e.key) {
+                    case 'ArrowLeft': maps[selectedMap].x -= step; break;
+                    case 'ArrowRight': maps[selectedMap].x += step; break;
+                    case 'ArrowUp': maps[selectedMap].y -= step; break;
+                    case 'ArrowDown': maps[selectedMap].y += step; break;
+                    default: handled = false;
+                }
+                if (handled) {
+                    updateMapPosition(selectedMap);
+                    e.preventDefault();
+                }
+            });
+        }
+
+        function selectMap(num) {
+            selectedMap = num;
+            document.querySelectorAll('.map-layer').forEach(el => el.classList.remove('selected'));
+            document.getElementById(`map${num}`).classList.add('selected');
+            [0,1,2].forEach(n => {
+                document.getElementById(`btn-map${n}`).classList.toggle('active', n === num);
+            });
+        }
+
+        function updateMapPosition(num) {
+            const map = maps[num];
+            map.element.style.left = map.x + 'px';
+            map.element.style.top = map.y + 'px';
+            map.element.style.transform = `scale(${map.scale})`;
+            map.element.style.transformOrigin = 'top left';
+            document.getElementById(`x${num}`).textContent = Math.round(map.x);
+            document.getElementById(`y${num}`).textContent = Math.round(map.y);
+            document.getElementById(`s${num}`).textContent = map.scale.toFixed(2);
+            updateTimelineWidth();   // 地图动了，总宽／时间轴跟着变
+        }
+
+        function updateWallPosition(wall) {
+            const el = document.getElementById(`wall-${wall}`);
+            if (wall === 'top' || wall === 'bottom') {
+                el.style.top = walls[wall] + 'px';
+            } else {
+                el.style.left = walls[wall] + 'px';
+            }
+            el.querySelector('.wall-label span').textContent = walls[wall];
+            document.getElementById(`w-${wall}`).textContent = walls[wall];
+        }
+
+        function toggleWalls() {
+            wallsVisible = !wallsVisible;
+            document.querySelectorAll('.wall-line').forEach(el => {
+                el.classList.toggle('hidden', !wallsVisible);
+            });
+            const btn = document.getElementById('btn-walls');
+            btn.textContent = wallsVisible ? '空气墙：显示中' : '空气墙：已隐藏';
+            btn.classList.toggle('wall-on', wallsVisible);
+        }
+
+        function setFade(val) {
+            fadeLocal = Math.max(0, Math.min(300, parseInt(val) || 0));
+            document.getElementById('fade-input').value = fadeLocal;
+            updateFadeMask();
+        }
+
+        // 用 CSS mask 模拟 Godot shader 的左边缘渐变融合
+        // mask 在元素本地盒子（1280宽）上生效，transform scale 后视觉上 = fadeLocal × scale
+        function updateFadeMask() {
+            const mask = `linear-gradient(90deg, transparent 0px, black ${fadeLocal}px)`;
+            maps[2].element.style.webkitMaskImage = mask;
+            maps[2].element.style.maskImage = mask;
+        }
+
+        function resetMaps() {
+            [0,1,2].forEach(n => {
+                maps[n].x = DEFAULTS[n].x;
+                maps[n].y = DEFAULTS[n].y;
+                maps[n].scale = DEFAULTS[n].scale;
+            });
+            Object.keys(WALL_DEFAULTS).forEach(k => { walls[k] = WALL_DEFAULTS[k]; updateWallPosition(k); });
+            [0,1,2].forEach(updateMapPosition);
+            updateTimelineWidth();
+        }
+
+        function exportParams() {
+            const fadeUv = (fadeLocal / 1280).toFixed(4);
+            const text = `【拼接参数】
+地图1（过渡地图1）: position = Vector2(${Math.round(maps[1].x)}, ${Math.round(maps[1].y)}), scale = ${maps[1].scale.toFixed(3)}
+地图2（城堡外）: position = Vector2(${Math.round(maps[2].x)}, ${Math.round(maps[2].y)}), scale = ${maps[2].scale.toFixed(3)}
+融合宽度 fade_left = ${fadeUv}（原图 ${fadeLocal}px）
+
+【空气墙】
+上墙 y=${walls.top} / 下墙 y=${walls.bottom} / 左墙 x=${walls.left} / 右墙内壁 x=${walls.right}
+
+【Godot 场景代码】
+[node name="Background2" parent="." instance=ExtResource("1_birthplace")]
+position = Vector2(${Math.round(maps[1].x)}, ${Math.round(maps[1].y)})
+scale = Vector2(${maps[1].scale.toFixed(3)}, ${maps[1].scale.toFixed(3)})
+frames_dir = "res://素材/过度地图/过度地图1/"
+
+[node name="Background3" parent="." instance=ExtResource("1_birthplace")]
+position = Vector2(${Math.round(maps[2].x)}, ${Math.round(maps[2].y)})
+scale = Vector2(${maps[2].scale.toFixed(3)}, ${maps[2].scale.toFixed(3)})
+frames_dir = "res://素材/城堡外/"
+# Background3/BackgroundSprite material 的 shader_parameter/fade_left = ${fadeUv}`;
+            const output = document.getElementById('export-output');
+            output.textContent = text;
+            navigator.clipboard.writeText(text).then(() => {
+                output.textContent += '\n\n✅ 已复制到剪贴板！';
+            });
+        }
+
+        /* ==================================================================
+         *  字幕调试功能
+         *  时间轴横跨整张地图（0 ~ 地图总宽），单位与游戏世界坐标 1:1。
+         *  红线 = 角色走到此 x 时字幕浮现；绿线 = 消失；蓝线 = 角色预览位置。
+         * ================================================================== */
+        const tlLineEls = new Map();   // 字幕 id -> {red, green, range}
+        const subBoxEls = new Map();   // 字幕 id -> 画布上的黄字元素
+        let subDrag = null;
+        let lastMouseUp = 0;
+
+        // 地图总宽 = 所有图层右边缘的最大值（拖动地图会实时变）
+        function mapTotalWidth() {
+            let w = 1280;
+            [0, 1, 2].forEach(n => {
+                const m = maps[n];
+                const iw = (m.img && m.img.naturalWidth) || 1280;
+                w = Math.max(w, m.x + iw * m.scale);
+            });
+            return Math.max(w, 2000);
+        }
+
+        function updateTimelineWidth() {
+            const w = Math.round(mapTotalWidth());
+            const tl = document.getElementById('timeline');
+            if (tl) tl.style.width = w + 'px';
+            if (Math.abs(w - lastTotalW) > 1) {
+                lastTotalW = w;
+                renderTicks();
+            }
+        }
+
+        function renderTicks() {
+            const box = document.getElementById('tl-ticks');
+            if (!box) return;
+            box.innerHTML = '';
+            const W = lastTotalW;
+            const target = Math.max(6, Math.min(14, Math.floor(W / 90)));
+            const raw = W / target;
+            const steps = [50, 100, 200, 250, 500, 1000, 2000, 5000];
+            const step = steps.find(s => s >= raw) || 10000;
+            for (let x = 0; x <= W; x += step) {
+                const t = document.createElement('div');
+                t.className = 'tl-tick major';
+                t.style.left = x + 'px';
+                box.appendChild(t);
+                const lb = document.createElement('div');
+                lb.className = 'tl-label';
+                lb.style.left = x + 'px';
+                lb.innerHTML = `${x}<small>${(x / playerSpeed).toFixed(1)}s</small>`;
+                box.appendChild(lb);
+            }
+            const minor = step / 5;
+            for (let x = minor; x < W; x += minor) {
+                if (Math.abs(x / step - Math.round(x / step)) < 1e-6) continue;
+                const t = document.createElement('div');
+                t.className = 'tl-tick';
+                t.style.left = x + 'px';
+                box.appendChild(t);
+            }
+        }
+
+        // 字幕文字在画布上的实际像素宽度（画布与游戏 1:1，所以就是 Godot 里的世界宽度）
+        function measureAll() {
+            subtitles.forEach(s => {
+                const box = subBoxEls.get(s.id);
+                const txt = box ? box.querySelector('.txt') : null;
+                widthCache.set(s.id, txt ? Math.round(txt.getBoundingClientRect().width) : 0);
+            });
+            widthDirty = false;
+        }
+        function invalidateWidth() { widthCache.clear(); widthDirty = true; }
+        function subWidth(s) {
+            if (widthDirty) measureAll();
+            return widthCache.get(s.id) || 0;
+        }
+
+        // 消失点（与游戏内 subtitle_trigger.gd 的规则保持一致）：
+        //   width 模式 = 字幕右端（＝浮现位置 + 半个字宽，也就是最后一个字所在处）+ 余量
+        //   time  模式 = 触发点 + 时长×速度
+        // 注意：黄字是以"浮现位置"为中心画的，所以角色从中间走到右端正好是半个字宽。
+        function subEndX(s) {
+            if (endMode === 'width') return s.posX + subWidth(s) * 0.5 + endPad;
+            return s.triggerX + s.duration * playerSpeed;
+        }
+        // width 模式下时长是算出来的，不是填出来的
+        function subDuration(s) { return (subEndX(s) - s.triggerX) / playerSpeed; }
+
+        function mkLine(s, kind) {
+            const el = document.createElement('div');
+            el.className = 'tl-line ' + kind;
+            el.dataset.id = s.id;
+            el.dataset.kind = kind;
+            const tag = document.createElement('span');
+            tag.className = 'tag';
+            tag.textContent = s.id;
+            el.appendChild(tag);
+            return el;
+        }
+
+        function renderLines() {
+            const box = document.getElementById('tl-lines');
+            if (!box) return;
+            box.innerHTML = '';
+            tlLineEls.clear();
+            subtitles.forEach(s => {
+                const red = mkLine(s, 'red');
+                const green = mkLine(s, 'green');
+                const range = document.createElement('div');
+                range.className = 'tl-range';
+                box.append(red, green, range);
+                tlLineEls.set(s.id, { red, green, range });
+            });
+            updateLines();
+        }
+
+        function updateLines() {
+            subtitles.forEach(s => {
+                const e = tlLineEls.get(s.id);
+                if (!e) return;
+                const rx = s.triggerX, ex = subEndX(s);
+                e.red.style.left = rx + 'px';
+                e.green.style.left = ex + 'px';
+                e.range.style.left = rx + 'px';
+                e.range.style.width = Math.max(0, ex - rx) + 'px';
+                const sel = s.id === selectedSubId;
+                e.red.classList.toggle('selected', sel);
+                e.green.classList.toggle('selected', sel);
+            });
+            updateCursor();
+        }
+
+        function updateCursor() {
+            const c = document.getElementById('tl-cursor');
+            if (!c) return;
+            c.style.left = cursorX + 'px';
+            c.querySelector('.tl-flag').textContent =
+                `x=${Math.round(cursorX)} · ${(cursorX / playerSpeed).toFixed(2)}s`;
+            const pin = document.getElementById('player-pin');
+            if (pin) pin.style.left = cursorX + 'px';
+        }
+
+        function renderSubBoxes() {
+            const layer = document.getElementById('sub-layer');
+            if (!layer) return;
+            layer.innerHTML = '';
+            subBoxEls.clear();
+            subtitles.forEach(s => {
+                const box = document.createElement('div');
+                box.className = 'sub-box';
+                box.dataset.id = s.id;
+                const t = document.createElement('div');
+                t.className = 'txt';
+                box.appendChild(t);
+                layer.appendChild(box);
+                subBoxEls.set(s.id, box);
+            });
+            invalidateWidth();   // DOM 重建了，宽度缓存作废
+        }
+
+        function updateSubVisuals() {
+            subtitles.forEach(s => {
+                const box = subBoxEls.get(s.id);
+                if (!box) return;
+                box.style.left = s.posX + 'px';
+                box.style.top = s.posY + 'px';
+                box.querySelector('.txt').textContent = s.text || '（空字幕）';
+                // 蓝指针落在该字幕区间内 = 此刻正在显示
+                const active = cursorX >= s.triggerX && cursorX <= subEndX(s);
+                box.classList.toggle('dim', !active);
+                box.classList.toggle('selected', s.id === selectedSubId);
+            });
+            // 文字/字号/字体刚变过 → 重新实测宽度，绿线位置跟着更新
+            if (widthDirty) { measureAll(); updateLines(); }
+            updateCursor();
+        }
+
+        function renderSubList() {
+            document.getElementById('sub-count').textContent = subtitles.length;
+            const box = document.getElementById('sub-list');
+            if (!subtitles.length) {
+                box.innerHTML = '<div id="subs-empty">还没有字幕 —— 到上方时间轴<b>双击空白处</b>新建第一条</div>';
+                return;
+            }
+            box.innerHTML = '';
+            subtitles.forEach(s => {
+                const row = document.createElement('div');
+                row.className = 'sub-row' + (s.id === selectedSubId ? ' selected' : '');
+                row.dataset.id = s.id;
+                row.innerHTML = `
+                    <div class="num">${s.id}</div>
+                    <input type="text" class="s-text" value="">
+                    <span>浮现 <input type="number" class="s-px" step="1"></span>
+                    <span>y <input type="number" class="s-py" step="1"></span>
+                    <span>触发x <input type="number" class="s-tx" step="10"></span>
+                    <span>时长 <input type="number" class="s-dur" step="0.5" min="0.2"></span>
+                    <span class="ro">字宽=<b class="v-w"></b>px</span>
+                    <span class="ro">消失x=<b class="v-end"></b></span>
+                    <button class="del">✕ 删除</button>`;
+                box.appendChild(row);
+
+                row.querySelector('.s-text').value = s.text;
+                row.querySelector('.s-px').value = Math.round(s.posX);
+                row.querySelector('.s-py').value = Math.round(s.posY);
+                row.querySelector('.s-tx').value = Math.round(s.triggerX);
+                const durEl = row.querySelector('.s-dur');
+                durEl.value = (endMode === 'width') ? subDuration(s).toFixed(2) : s.duration;
+                durEl.disabled = (endMode === 'width');
+                row.querySelector('.v-w').textContent = subWidth(s);
+                row.querySelector('.v-end').textContent = Math.round(subEndX(s));
+
+                row.addEventListener('mousedown', () => {
+                    if (selectedSubId !== s.id) selectSubtitle(s.id);
+                });
+                row.querySelector('.s-text').addEventListener('input', e => {
+                    s.text = e.target.value;
+                    invalidateWidth();          // 文字变了，宽度和消失点都要重算
+                    updateSubVisuals(); saveSubs();
+                });
+                const bind = (cls, fn) => row.querySelector(cls).addEventListener('input', e => {
+                    const v = parseFloat(e.target.value);
+                    if (!isNaN(v)) { fn(v); afterSubEdit(s); }
+                });
+                bind('.s-px', v => s.posX = Math.max(0, v));
+                bind('.s-py', v => s.posY = Math.max(0, v));
+                bind('.s-tx', v => s.triggerX = Math.max(0, v));
+                bind('.s-dur', v => s.duration = Math.max(0.2, v));
+                row.querySelector('.del').addEventListener('click', () => deleteSubtitle(s.id));
+            });
+        }
+
+        function refreshSubRowValues() {
+            document.querySelectorAll('#sub-list .sub-row').forEach(row => {
+                const s = subtitles.find(x => x.id == row.dataset.id);
+                if (!s) return;
+                const set = (cls, val) => {
+                    const el = row.querySelector(cls);
+                    if (document.activeElement !== el) el.value = val;
+                };
+                set('.s-tx', Math.round(s.triggerX));
+                const de = row.querySelector('.s-dur');
+                de.disabled = (endMode === 'width');
+                if (document.activeElement !== de) {
+                    de.value = (endMode === 'width') ? subDuration(s).toFixed(2) : s.duration;
+                }
+                set('.s-px', Math.round(s.posX));
+                set('.s-py', Math.round(s.posY));
+                row.querySelector('.v-w').textContent = subWidth(s);
+                row.querySelector('.v-end').textContent = Math.round(subEndX(s));
+                row.classList.toggle('selected', s.id === selectedSubId);
+            });
+        }
+
+        function afterSubEdit(s) {
+            updateLines(); updateSubVisuals(); refreshSubRowValues(); saveSubs();
+        }
+
+        function renderSubs() { renderSubBoxes(); renderSubList(); renderLines(); }
+        function renderTimeline() { updateTimelineWidth(); renderLines(); }
+
+        // 命中检测：时间轴上离得最近的红/绿线
+        function hitTestLine(x) {
+            let hit = null, dist = 9;
+            subtitles.forEach(s => {
+                const dR = Math.abs(x - s.triggerX), dG = Math.abs(x - subEndX(s));
+                if (dR < dist) { hit = { kind: 'red', id: s.id }; dist = dR; }
+                if (dG < dist) { hit = { kind: 'green', id: s.id }; dist = dG; }
+            });
+            return hit;
+        }
+
+        function setupSubtitleEvents() {
+            const tl = document.getElementById('timeline');
+            const area = document.getElementById('map-area');
+
+            tl.addEventListener('mousedown', e => {
+                const rect = tl.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const hit = hitTestLine(x);
+                if (hit) { subDrag = hit; selectSubtitle(hit.id); }
+                else { subDrag = { kind: 'cursor' }; cursorX = Math.max(0, Math.min(x, lastTotalW)); }
+                applyTlDrag(x);
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', e => {
+                if (!subDrag) return;
+                const rect = tl.getBoundingClientRect();
+                applyTlDrag(e.clientX - rect.left);
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (subDrag) { subDrag = null; saveSubs(); }
+                lastMouseUp = Date.now();
+            });
+
+            tl.addEventListener('dblclick', e => {
+                if (Date.now() - lastMouseUp < 250) return;   // 刚拖完不算双击
+                const rect = tl.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                if (hitTestLine(x)) return;                   // 点在线上不算新建
+                addSubtitle(x);
+            });
+
+            // 画布上拖动黄色字幕 = 设定浮现坐标
+            area.addEventListener('mousedown', e => {
+                const box = e.target.closest('.sub-box');
+                if (!box) return;
+                const s = subtitles.find(x => x.id == box.dataset.id);
+                if (!s) return;
+                selectSubtitle(s.id);
+                box.classList.add('dragging');
+                const rect = area.getBoundingClientRect();
+                const move = ev => {
+                    s.posX = Math.max(0, Math.round(ev.clientX - rect.left));
+                    s.posY = Math.max(0, Math.round(ev.clientY - rect.top));
+                    // 同步开关开着时：红线触发点跟着字幕走到同一个 x（不用再单独去时间轴拖）
+                    if (syncTrigger) s.triggerX = Math.max(0, Math.min(s.posX, lastTotalW || mapTotalWidth()));
+                    box.style.left = s.posX + 'px';
+                    box.style.top = s.posY + 'px';
+                    updateLines();
+                    refreshSubRowValues();
+                };
+                const up = () => {
+                    box.classList.remove('dragging');
+                    document.removeEventListener('mousemove', move);
+                    document.removeEventListener('mouseup', up);
+                    saveSubs();
+                };
+                document.addEventListener('mousemove', move);
+                document.addEventListener('mouseup', up);
+                e.preventDefault();
+                e.stopPropagation();   // 别让画布把它当成"拖动地图"
+            });
+        }
+
+        function applyTlDrag(x) {
+            if (!subDrag) return;
+            x = Math.max(0, Math.min(x, lastTotalW));
+            if (subDrag.kind === 'cursor') {
+                cursorX = Math.round(x);
+                updateCursor(); updateSubVisuals();
+                return;
+            }
+            const s = subtitles.find(v => v.id === subDrag.id);
+            if (!s) return;
+            if (subDrag.kind === 'red') {
+                s.triggerX = Math.round(x);
+            } else if (endMode === 'width') {
+                // 绿线由字宽决定，拖它 = 调整统一余量
+                endPad = Math.max(0, Math.round(x - s.triggerX - subWidth(s)));
+                const pi = document.getElementById('pad-input');
+                if (pi) pi.value = endPad;
+            } else {
+                s.duration = Math.max(0.2, +((x - s.triggerX) / playerSpeed).toFixed(2));
+            }
+            updateLines(); updateSubVisuals(); refreshSubRowValues();
+        }
+
+        /* ---------- 字幕增删改 ---------- */
+        function addSubtitle(atX) {
+            const W = lastTotalW || mapTotalWidth();
+            let x = (atX === undefined) ? Math.round(cursorX) : Math.round(atX);
+            // 点「➕新建字幕」但蓝指针还停在 x=0：自动排到上一条之后，避免全部叠在最左边
+            if (atX === undefined && x <= 0 && subtitles.length) {
+                const last = subtitles.reduce((m, s) => Math.max(m, subEndX(s)), 0);
+                x = Math.min(Math.round(last + 0.5 * playerSpeed), W);
+            }
+            // 浮现位置默认落在当前可视区中心，不至于跑到屏幕外找不着
+            const cc = document.getElementById('canvas-container');
+            const defX = cc ? Math.round(cc.scrollLeft + cc.clientWidth / 2) : x;
+            const defY = cc ? Math.round(cc.scrollTop + cc.clientHeight * 0.62) : 520;
+            const s = {
+                id: nextSubId++,
+                text: subtitles.length === 0 ? '字幕示例：好像什么东西打开了' : '新的字幕文字',
+                triggerX: Math.max(0, Math.min(x, W)),
+                duration: subDefaultDur,
+                posX: Math.max(0, Math.min(atX === undefined ? defX : x, W)),
+                posY: Math.max(0, defY)
+            };
+            subtitles.push(s);
+            selectedSubId = s.id;
+            if (!subsVisible) toggleSubs();
+            cursorX = s.triggerX;              // 指针跟过去，方便立刻预览
+            renderSubs(); updateSubVisuals(); saveSubs();
+            switchTab('subs');
+            return s;
+        }
+
+        function deleteSubtitle(id) {
+            subtitles = subtitles.filter(s => s.id !== id);
+            if (selectedSubId === id) selectedSubId = subtitles.length ? subtitles[0].id : null;
+            renderSubs(); updateSubVisuals(); saveSubs();
+        }
+
+        function selectSubtitle(id) {
+            selectedSubId = id;
+            updateLines(); updateSubVisuals(); refreshSubRowValues(); saveSubs();
+        }
+
+        /* ---------- 开关 / 设置 ---------- */
+        function toggleSubs() {
+            subsVisible = !subsVisible;
+            document.getElementById('sub-layer').classList.toggle('off', !subsVisible);
+            document.getElementById('player-pin').classList.toggle('off', !subsVisible);
+            document.getElementById('timeline').classList.toggle('off', !subsVisible);
+            const btn = document.getElementById('btn-subs');
+            btn.textContent = subsVisible ? '💬 字幕：显示中' : '💬 字幕：已隐藏';
+            btn.classList.toggle('wall-on', subsVisible);
+        }
+
+        function switchTab(name) {
+            document.getElementById('panel-splice').style.display = (name === 'splice') ? '' : 'none';
+            document.getElementById('panel-subs').style.display = (name === 'subs') ? '' : 'none';
+            document.getElementById('tab-splice').classList.toggle('on', name === 'splice');
+            document.getElementById('tab-subs').classList.toggle('on', name === 'subs');
+        }
+
+        function setDefaultDur(v) { subDefaultDur = Math.max(0.2, parseFloat(v) || 2.0); saveSubs(); }
+        function setSpeed(v) {
+            playerSpeed = Math.max(1, parseFloat(v) || 200);
+            renderTimeline(); refreshSubRowValues(); updateSubVisuals(); saveSubs();
+        }
+
+        /* ---------- 字幕外观（哥特体 + 黄色 + 描边） ---------- */
+        function applySubStyle() {
+            const layer = document.getElementById('sub-layer');
+            if (!layer) return;
+            layer.className = 'f-' + subFont;
+            layer.style.setProperty('--sub-size', subSize + 'px');
+            layer.style.setProperty('--sub-stroke', subStroke + 'px');
+        }
+        function setSubFont(v) { subFont = v; applySubStyle(); invalidateWidth(); renderSubs(); updateSubVisuals(); saveSubs(); }
+        function setSubSize(v) { subSize = Math.max(10, parseInt(v) || 26); applySubStyle(); invalidateWidth(); renderSubs(); updateSubVisuals(); saveSubs(); }
+        function setSubStroke(v) { subStroke = Math.max(0, parseInt(v) || 0); applySubStyle(); invalidateWidth(); renderSubs(); updateSubVisuals(); saveSubs(); }
+        function setEndMode(v) {
+            endMode = v;
+            document.getElementById('pad-input').disabled = (v !== 'width');
+            renderSubs(); updateSubVisuals(); refreshSubRowValues(); saveSubs();
+        }
+        function setEndPad(v) { endPad = Math.max(0, parseInt(v) || 0); updateLines(); refreshSubRowValues(); saveSubs(); }
+
+        function toggleSync() {
+            syncTrigger = !syncTrigger;
+            const btn = document.getElementById('btn-sync');
+            btn.classList.toggle('wall-on', syncTrigger);
+            btn.textContent = syncTrigger ? '🔗 拖文字同步触发点' : '🔓 触发点独立';
+            saveSubs();
+        }
+
+        /* ---------- 触发点修复 / 自动排队 ---------- */
+        // 把每条字幕的触发点 x 设为它的浮现位置 x（角色走到字浮现处就出现）
+        function alignTriggerToPos() {
+            if (!subtitles.length) { alert('还没有字幕'); return; }
+            const W = lastTotalW || mapTotalWidth();
+            subtitles.forEach(s => { s.triggerX = Math.max(0, Math.min(Math.round(s.posX), W)); });
+            renderSubs(); updateSubVisuals(); saveSubs();
+            flashMsg(`✅ 已把 ${subtitles.length} 条字幕的触发点对齐到各自浮现位置`);
+        }
+
+        // 按浮现位置从左到右排序，依次间隔触发（一条接一条的旁白）
+        function queueSubtitles() {
+            if (!subtitles.length) { alert('还没有字幕'); return; }
+            const W = lastTotalW || mapTotalWidth();
+            const gapSec = parseFloat(document.getElementById('gap-input')?.value) || 0.5;
+            // 按浮现 x 排序，相等时按 y 再按 id，保证顺序稳定
+            const sorted = [...subtitles].sort((a, b) =>
+                (a.posX - b.posX) || (a.posY - b.posY) || (a.id - b.id));
+            let t = 0;
+            sorted.forEach((s, i) => {
+                // 触发 x = 上一条结束位置 + 间隔，但不早于它自己的浮现 x
+                const fromQueue = Math.round(t * playerSpeed);
+                s.triggerX = Math.max(0, Math.min(Math.max(Math.round(s.posX), fromQueue), W));
+                t = s.triggerX / playerSpeed + s.duration + gapSec;
+            });
+            subtitles = sorted;
+            if (selectedSubId) selectSubtitle(selectedSubId);
+            renderSubs(); updateSubVisuals(); saveSubs();
+            flashMsg(`✅ 已按浮现位置排序并依次排队（间隔 ${gapSec}s），共 ${subtitles.length} 条`);
+        }
+
+        // 顶部闪一条提示，不用弹窗打断操作
+        let flashTimer = null;
+        function flashMsg(msg) {
+            let el = document.getElementById('flash-msg');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'flash-msg';
+                document.body.appendChild(el);
+            }
+            el.textContent = msg;
+            el.classList.add('show');
+            clearTimeout(flashTimer);
+            flashTimer = setTimeout(() => el.classList.remove('show'), 2600);
+        }
+
+        /* ---------- 导出 ---------- */
+        const FONT_LABEL = {
+            gothic: '哥特 Blackletter（UnifrakturMaguntia）',
+            cinzel: '哥特碑铭（Cinzel Decorative）',
+            serif:  '古典衬线（Noto Serif SC）',
+            sans:   '粗黑描边（Noto Sans SC）'
+        };
+
+        function exportSubtitles() {
+            if (!subtitles.length) { alert('还没有字幕 —— 先到时间轴双击空白处新建一条'); return; }
+
+            // ---- 导出前自检：把"忘了设触发点"这类问题直接挑出来 ----
+            const warns = [];
+            const zero = subtitles.filter(s => s.triggerX <= 0);
+            if (zero.length) warns.push(`有 ${zero.length} 条字幕的触发点还停在 x=0（角色一出生就会全部同时冒出来）—— 点顶栏「🎯 触发=浮现x」一键对齐。`);
+            const byX = new Map();
+            subtitles.forEach(s => {
+                const k = Math.round(s.triggerX);
+                byX.set(k, (byX.get(k) || 0) + 1);
+            });
+            [...byX.entries()].filter(([k, n]) => n > 1 && k > 0)
+                .forEach(([k, n]) => warns.push(`x=${k} 处有 ${n} 条字幕同时触发（会叠在一起显示）。`));
+            const sorted = [...subtitles].sort((a, b) => a.triggerX - b.triggerX);
+            for (let i = 0; i < sorted.length - 1; i++) {
+                if (subEndX(sorted[i]) > sorted[i + 1].triggerX + 1) {
+                    warns.push(`第 ${sorted[i].id} 条还没消失（到 x≈${Math.round(subEndX(sorted[i]))}），第 ${sorted[i + 1].id} 条就出现了 —— 想一条接一条的话点「⏱ 依次排队」。`);
+                    break;
+                }
+            }
+
+            measureAll();   // 导出前确保字宽是最新的
+
+            const L = [];
+            L.push('===== 字幕参数导出 =====');
+            L.push(`地图总宽: ${lastTotalW} px ｜ 角色速度: ${playerSpeed} px/s ｜ 字幕数: ${subtitles.length}`);
+            L.push('说明: posX/posY 为游戏世界坐标（画布与游戏 1:1 对齐），可直接用于 Godot；');
+            L.push('      triggerX = 角色走到该 x 时字幕浮现。');
+            L.push(endMode === 'width'
+                ? `消失规则: 角色走到这条字幕的最后一个字时消散（结束x = 浮现x + 半个字宽 ${endPad > 0 ? '+ 余量' + endPad : ''}），字越长停留越久。`
+                : '消失规则: 固定显示 duration 秒后消失。');
+            L.push(`外观: 字体=${FONT_LABEL[subFont] || subFont} ｜ 字号=${subSize}px ｜ 描边=${subStroke}px ｜ 颜色=#ffd54a（金黄）`);
+            L.push(`动画: 出现=淡入(fade_in) ｜ 消失=文字碎成单字飘散(shatter)`);
+            L.push('');
+            subtitles.forEach((s, i) => {
+                const w = subWidth(s);
+                L.push(`── 字幕 ${i + 1} ${'─'.repeat(26)}`);
+                L.push(`文本: "${s.text}"`);
+                L.push(`浮现位置: Vector2(${Math.round(s.posX)}, ${Math.round(s.posY)})   （字幕中心点）`);
+                L.push(`文字宽度: ${w} px  → 左端 x=${Math.round(s.posX - w / 2)}，右端 x=${Math.round(s.posX + w / 2)}`);
+                L.push(`触发: x ≥ ${Math.round(s.triggerX)}  (t ≈ ${(s.triggerX / playerSpeed).toFixed(2)}s)`);
+                L.push(`消失: x ≥ ${Math.round(subEndX(s))}  (t ≈ ${(subEndX(s) / playerSpeed).toFixed(2)}s)`);
+                L.push(`显示时长: ${subDuration(s).toFixed(2)} s${endMode === 'width' ? '（由字宽算出来的）' : ''}`);
+                L.push('');
+            });
+            L.push('【Godot 配置数组】');
+            L.push('const SUBTITLES := [');
+            subtitles.forEach(s => {
+                const txt = s.text.replace(/"/g, '\\"');
+                L.push(`\t{"text": "${txt}", "pos": Vector2(${Math.round(s.posX)}, ${Math.round(s.posY)}), ` +
+                       `"trigger_x": ${Math.round(s.triggerX)}.0, "width": ${subWidth(s)}.0, ` +
+                       `"duration": ${subDuration(s).toFixed(2)}},`);
+            });
+            L.push(']');
+            L.push('');
+            L.push('【Godot 字体建议】');
+            L.push('  哥特/碑铭字形只覆盖英文与数字，中文需要单独配一份字体，例如：');
+            L.push('  - 哥特感中文：方正清刻本悦宋 / 汉仪旗黑 / 思源宋体 Heavy');
+            L.push('  - 把字体文件放进项目后，在 Label 的 Theme Overrides > Fonts 里指定；');
+            L.push('  - 描边用 Theme Overrides > Constants > outline_size = ' + subStroke + '，outline_color = #120c00；');
+            L.push('  - 字体颜色 modulate / font_color = #ffd54a，字号 ' + subSize + '。');
+
+            const text = L.join('\n');
+            const out = document.getElementById('export-output');
+            // 有问题的先醒目提示，避免把错参数粘进游戏
+            out.innerHTML = warns.length
+                ? '<div class="warn-box">⚠️ ' + warns.join('<br>⚠️ ') + '</div>'
+                : '<div style="color:#4ade80;font-size:12px;margin-bottom:6px">✅ 参数自检通过：触发点无重叠、无遗漏</div>';
+            const pre = document.createElement('div');
+            pre.textContent = text;
+            out.appendChild(pre);
+            navigator.clipboard.writeText(text).then(
+                () => { pre.textContent += '\n\n✅ 已复制到剪贴板！'; },
+                () => { pre.textContent += '\n\n⚠️ 自动复制失败，请手动选中复制'; }
+            );
+            switchTab('subs');
+        }
+
+        /* ---------- 本地保存 ---------- */
+        const SUB_STORE = 'map_editor_subtitles_v1';
+        function saveSubs() {
+            try {
+                localStorage.setItem(SUB_STORE, JSON.stringify({
+                    subtitles, nextSubId, selectedSubId, subDefaultDur, playerSpeed, cursorX,
+                    subFont, subSize, subStroke, syncTrigger, endMode, endPad
+                }));
+            } catch (e) { /* 存储不可用时静默 */ }
+        }
+        function loadSubs() {
+            try {
+                const raw = localStorage.getItem(SUB_STORE);
+                if (!raw) return;
+                const d = JSON.parse(raw);
+                subtitles = Array.isArray(d.subtitles) ? d.subtitles : [];
+                nextSubId = d.nextSubId || (subtitles.reduce((m, s) => Math.max(m, s.id), 0) + 1);
+                selectedSubId = d.selectedSubId ?? (subtitles[0] ? subtitles[0].id : null);
+                subDefaultDur = d.subDefaultDur || 2.0;
+                playerSpeed = d.playerSpeed || 200;
+                cursorX = d.cursorX || 0;
+                subFont = d.subFont || 'gothic';
+                subSize = d.subSize || 26;
+                subStroke = (d.subStroke === undefined) ? 3 : d.subStroke;
+                syncTrigger = (d.syncTrigger === undefined) ? true : !!d.syncTrigger;
+                endMode = (d.endMode === 'time') ? 'time' : 'width';
+                endPad = d.endPad || 0;
+                document.getElementById('dur-input').value = subDefaultDur;
+                document.getElementById('speed-input').value = playerSpeed;
+                document.getElementById('font-input').value = subFont;
+                document.getElementById('size-input').value = subSize;
+                document.getElementById('stroke-input').value = subStroke;
+                document.getElementById('endmode-input').value = endMode;
+                document.getElementById('pad-input').value = endPad;
+                document.getElementById('pad-input').disabled = (endMode !== 'width');
+                const b = document.getElementById('btn-sync');
+                b.classList.toggle('wall-on', syncTrigger);
+                b.textContent = syncTrigger ? '🔗 拖文字同步触发点' : '🔓 触发点独立';
+                applySubStyle();
+            } catch (e) { /* 忽略损坏的存档 */ }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
